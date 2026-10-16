@@ -80,7 +80,7 @@ Color schemes save to and load from `.json` files. The window stays open while y
 **Insert Olet** (Routing panel):
 - **Insert:** click a point on a pipe. The point is projected onto the main's centreline, so the olet is always centred. A temporary branch pipe of the chosen size is drawn at the chosen angle (top, 45° steps, side, bottom) and Revit builds the takeoff from it. The temporary pipe is then deleted, leaving the olet with an open connector.
 - **Resize:** click an existing olet. It is rebuilt at the same centre and direction at the new size, and a pipe already connected to it is resized and reconnected.
-- **Type:** the olet family type comes from the pipe type's routing preferences, or from any loaded tap/spud family you pick.
+- **Type:** pick any loaded tap/olet family type, or leave it on Auto. Auto uses the pipe type's own tap, else the first loaded olet, else an `*olet*.rfa` found in your Revit library folders. Routing preferences that don't include a tap (e.g. Junction = Tee) still work: a temporary all-sizes tap rule is added for the takeoff and removed in the same transaction, so the pipe type is unchanged.
 - **Keep placing:** reuse the same settings for each click until you press Esc.
 
 ## Roadmap

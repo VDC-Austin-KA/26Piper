@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Mechanical;
@@ -110,6 +111,8 @@ public sealed class OletService(Document doc, View view)
         return created;
     }
 
+    private const string TempRuleMarker = "PipingSuite temporary olet rule";
+
     private FamilyInstance CreateOlet(Pipe main, XYZ center, XYZ direction, double diameter, ElementId? symbolId)
     {
         var systemTypeId = main.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM).AsElementId();
@@ -118,20 +121,89 @@ public sealed class OletService(Document doc, View view)
         temp.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM).Set(diameter);
         doc.Regenerate();
 
-        var olet = doc.Create.NewTakeoffFitting(Nearest(temp, center), main)
-                   ?? throw new InvalidOperationException("Revit could not create a takeoff. Check the pipe type's routing preferences (Junction: Tap).");
+        var rpm = main.PipeType.RoutingPreferenceManager;
+        bool typeHasTap = rpm.PreferredJunctionType == PreferredJunctionType.Tap
+                          && rpm.GetNumberOfRules(RoutingPreferenceRuleGroupType.Junctions) > 0;
 
-        if (symbolId is not null && olet.Symbol.Id != symbolId && doc.GetElement(symbolId) is FamilySymbol symbol)
+        // Use the pipe type's own tap only when nothing specific was asked for and it has one;
+        // otherwise drive the takeoff with a chosen/loaded olet family via a temporary rule.
+        var oletSymbol = symbolId is null && typeHasTap ? null : ResolveOletSymbol(symbolId);
+        FamilyInstance Build()
         {
-            if (!symbol.IsActive) symbol.Activate();
-            olet.ChangeTypeId(symbolId);
+            var created = doc.Create.NewTakeoffFitting(Nearest(temp, center), main)
+                          ?? throw new InvalidOperationException("Revit could not create a takeoff on this pipe.");
+            doc.Delete(temp.Id); // the olet stays on the main with an open branch connector
+            doc.Regenerate();
+            return created;
         }
 
-        doc.Delete(temp.Id); // the olet stays on the main with an open branch connector
-        doc.Regenerate();
+        var olet = oletSymbol is null ? Build() : WithTemporaryTapRule(rpm, oletSymbol, Build);
         if (!olet.IsValidObject)
             throw new InvalidOperationException("Revit removed the olet together with the temporary branch pipe.");
         return olet;
+    }
+
+    /// <summary>
+    /// Puts the olet first in the pipe type's junction rules (all sizes) and prefers taps, runs
+    /// <paramref name="create"/>, then restores the routing preferences exactly. The pipe type
+    /// is therefore unchanged once the transaction commits; only the olet remains.
+    /// </summary>
+    private static FamilyInstance WithTemporaryTapRule(RoutingPreferenceManager rpm, FamilySymbol symbol, Func<FamilyInstance> create)
+    {
+        var group = RoutingPreferenceRuleGroupType.Junctions;
+        var originalJunction = rpm.PreferredJunctionType;
+        var rule = new RoutingPreferenceRule(symbol.Id, TempRuleMarker);
+        rule.AddCriterion(PrimarySizeCriterion.All());
+        rpm.AddRule(group, rule, 0);
+        rpm.PreferredJunctionType = PreferredJunctionType.Tap;
+        try
+        {
+            return create();
+        }
+        finally
+        {
+            for (int i = rpm.GetNumberOfRules(group) - 1; i >= 0; i--)
+                if (rpm.GetRule(group, i).Description == TempRuleMarker) rpm.RemoveRule(group, i);
+            rpm.PreferredJunctionType = originalJunction;
+        }
+    }
+
+    /// <summary>Chosen type, else the first loaded olet type, else an olet family from the Revit library.</summary>
+    private FamilySymbol ResolveOletSymbol(ElementId? symbolId)
+    {
+        var symbol = (symbolId is not null ? doc.GetElement(symbolId) as FamilySymbol : null)
+                     ?? GetOletTypes().FirstOrDefault()
+                     ?? LoadOletFromLibrary()
+                     ?? throw new InvalidOperationException(
+                         "No olet family is loaded. Load a tap/olet pipe fitting family (e.g. Weldolet) and try again.");
+        if (!symbol.IsActive) symbol.Activate();
+        return symbol;
+    }
+
+    private FamilySymbol? LoadOletFromLibrary()
+    {
+        foreach (var root in doc.Application.GetLibraryPaths().Values.Where(Directory.Exists))
+        {
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(root, "*olet*.rfa", SearchOption.AllDirectories)
+                    .OrderBy(f => f.Contains("weldolet", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                    .ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                if (!doc.LoadFamily(file, out Family family)) continue;
+                var loaded = family.GetFamilySymbolIds().Select(doc.GetElement).OfType<FamilySymbol>().FirstOrDefault();
+                if (loaded is not null && GetOletTypes().Any(s => s.Id == loaded.Id)) return loaded;
+            }
+        }
+        return null;
     }
 
     /// <summary>Unit vector perpendicular to the main, rotated <paramref name="degrees"/> from "top".</summary>

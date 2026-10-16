@@ -82,7 +82,7 @@ public sealed class InsertOletCommand : IExternalCommand
         string Size(double d) => UnitFormatUtils.Format(units, SpecTypeId.PipeSize, d, false);
 
         var sizes = OletService.GetBranchSizes(main).Select(d => new LabeledValue<double>(Size(d), d)).ToList();
-        var types = new List<LabeledValue<ElementId?>> { new("Routing preferences (pipe type default)", null) };
+        var types = new List<LabeledValue<ElementId?>> { new("Auto (pipe type's tap, else first loaded olet)", null) };
         types.AddRange(service.GetOletTypes().Select(s => new LabeledValue<ElementId?>($"{s.FamilyName}: {s.Name}", s.Id)));
 
         var target = isResize
