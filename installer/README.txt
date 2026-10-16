@@ -1,7 +1,8 @@
 Piping Productivity Suite for Revit 2026
 ========================================
 
-Install:   close Revit, then double-click Install.bat
+Install:   right-click the zip > "Extract All...", close Revit,
+           then double-click Install.bat in the extracted folder
 Uninstall: close Revit, then double-click Uninstall.bat
 
 Files are installed for the current user only (no admin rights needed) into:

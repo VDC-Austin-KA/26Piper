@@ -4,6 +4,16 @@ rem Piping Productivity Suite - per-user installer for Revit 2026 (no admin righ
 set "SRC=%~dp0"
 set "DEST=%APPDATA%\Autodesk\Revit\Addins\2026"
 
+rem Running Install.bat straight from inside the zip only extracts this one file.
+if not exist "%SRC%PipingSuite\PipingSuite.dll" (
+    echo The add-in files were not found next to this installer.
+    echo.
+    echo Extract the zip first: right-click the zip ^> "Extract All...",
+    echo then run Install.bat from the extracted folder.
+    pause
+    exit /b 1
+)
+
 tasklist /FI "IMAGENAME eq Revit.exe" | find /I "Revit.exe" >nul
 if not errorlevel 1 (
     echo Revit is running. Close Revit and run this installer again.
