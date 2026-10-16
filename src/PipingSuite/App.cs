@@ -38,6 +38,8 @@ public sealed class App : IExternalApplication
         var routing = application.CreateRibbonPanel(TabName, "Routing");
         AddButton<AlignConnectCommand>(routing, "Align &\nConnect", "align", "align",
             "Fix small offsets and connect two piping elements. Moves the smaller pipe; the main and fittings stay put. Tees into the main when needed.");
+        AddButton<InsertOletCommand>(routing, "Insert\nOlet", "olet", "olet",
+            "Click a pipe to place a centred olet (no branch pipe left behind), or click an existing olet to resize it in place.");
 
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",

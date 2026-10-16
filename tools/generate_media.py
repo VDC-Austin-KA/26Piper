@@ -157,6 +157,14 @@ def icon_color(d):
         d.ellipse([x - r, y - r, x + r, y + r], fill=c)
 
 
+def icon_olet(d):
+    pipe(d, (6, 96), (122, 96), 34)                           # main
+    d.line([(64, 10), (64, 120)], fill=ORANGE, width=4)        # centreline: olet stays centred
+    d.polygon([(42, 80), (86, 80), (78, 50), (50, 50)], fill=INK)  # olet body
+    d.rectangle([52, 38, 76, 50], fill=GREEN)                  # open branch connector
+    pipe(d, (64, 6), (64, 26), 14, GHOST)                      # temporary branch (removed)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -164,6 +172,7 @@ ICONS = {
     "combine": icon_combine,
     "align": icon_align,
     "color": icon_color,
+    "olet": icon_olet,
 }
 
 
@@ -301,12 +310,32 @@ def scene_color(t, d):
     caption(d, "Color Splasher: color the view by any parameter value")
 
 
+def scene_olet(t, d):
+    cx = 200
+    pipe(d, s(20, 165), s(380, 165), 40 * SS)                       # main never moves
+    d.line([*s(cx, 20), *s(cx, 205)], fill=ORANGE, width=SS)        # centreline
+    branch = phase(t, 0.3, 1.0) * (1 - phase(t, 1.8, 2.4))          # temp branch draws in, then is removed
+    if branch > 0:
+        pipe(d, s(cx, 140 - 110 * branch), s(cx, 140), 16 * SS, mix(BG, GHOST, branch))
+    grow = phase(t, 3.0, 3.8)                                       # resize: stays centred
+    olet = phase(t, 1.1, 1.6)
+    if olet > 0:
+        half_top, half_bot, height = 12 + 10 * grow, 22 + 14 * grow, 30 + 6 * grow
+        col = mix(BG, INK, olet)
+        d.polygon([s(cx - half_bot, 147), s(cx + half_bot, 147), s(cx + half_top, 147 - height), s(cx - half_top, 147 - height)], fill=col)
+        d.rectangle([*s(cx - half_top, 147 - height - 8), *s(cx + half_top, 147 - height)], fill=mix(BG, GREEN, olet))
+        size = "1\"" if grow < 0.5 else "2\""
+        d.text(s(cx + 46, 100), size, font=font(14 * SS, True), fill=col, anchor="lm")
+    caption(d, "Insert Olet: centred on the main, no branch pipe left")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
     "combine": scene_combine,
     "align": scene_align,
     "color": scene_color,
+    "olet": scene_olet,
 }
 
 
