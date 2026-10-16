@@ -1,0 +1,22 @@
+<Window x:Class="PipingSuite.UI.Views.CopyOletWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Copy Olet" Width="420" SizeToContent="Height"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="12">
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,10" />
+
+        <TextBlock Text="Place on each target pipe at" />
+        <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" Margin="0,2,0,8" />
+
+        <CheckBox Content="Extend pipes that are too short (free end only)" IsChecked="{Binding ExtendShortPipes}" Margin="0,2,0,8" />
+
+        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                   Text="Size, olet type and rotation are copied from the source. Targets are oriented like the source pipe, so 'start' means the same end even if a pipe was drawn the other way. One undo reverts the whole batch." />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Copy" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

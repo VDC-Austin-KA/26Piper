@@ -13,6 +13,8 @@ namespace PipingSuite.Services;
 /// <param name="BranchDiameter">Nominal branch size (internal feet).</param>
 /// <param name="SymbolId">Specific olet family type; null = whatever the pipe type's routing preferences give.</param>
 /// <param name="AngleDegrees">Around the main's axis, 0 = top of pipe (or view-right on vertical mains).</param>
+public enum OletCopyMode { FromStart, FromEnd, SamePosition }
+
 public sealed record OletSettings(double BranchDiameter, ElementId? SymbolId, double AngleDegrees);
 
 /// <summary>
@@ -254,10 +256,110 @@ public sealed class OletService(Document doc, View view)
     /// <summary>Unit vector perpendicular to the main, rotated <paramref name="degrees"/> from "top".</summary>
     private XYZ Direction(XYZ axis, double degrees)
     {
-        var reference = Perpendicular(XYZ.BasisZ, axis);
-        if (reference is null) reference = Perpendicular(view.RightDirection, axis) ?? Perpendicular(XYZ.BasisX, axis)!;
+        var reference = TopReference(axis);
         double a = degrees * Math.PI / 180;
         return (reference * Math.Cos(a) + axis.CrossProduct(reference) * Math.Sin(a)).Normalize();
+    }
+
+    /// <summary>Inverse of <see cref="Direction"/>: the angle of <paramref name="dir"/> around the axis.</summary>
+    private double AngleOf(XYZ axis, XYZ dir)
+    {
+        var reference = TopReference(axis);
+        double deg = Math.Atan2(dir.DotProduct(axis.CrossProduct(reference)), dir.DotProduct(reference)) * 180 / Math.PI;
+        return (deg + 360) % 360;
+    }
+
+    /// <summary>"Top of pipe": world up, or view-right on vertical pipes.</summary>
+    private XYZ TopReference(XYZ axis) =>
+        Perpendicular(XYZ.BasisZ, axis) ?? Perpendicular(view.RightDirection, axis) ?? Perpendicular(XYZ.BasisX, axis)!;
+
+    // ---------- batch copy ----------
+
+    /// <summary>Where an olet sits on its main, independent of that main's position.</summary>
+    public sealed record OletPlacement(
+        double OffsetFromStart, double OffsetFromEnd, double AngleDegrees, double BranchDiameter,
+        ElementId SymbolId, XYZ SourceAxis, XYZ SourceCenter, ElementId SourceMainId);
+
+    public OletPlacement Describe(FamilyInstance olet)
+    {
+        var (main, branch) = AsOlet(olet) ?? throw new InvalidOperationException("Not an olet on a pipe.");
+        var line = MainLine(main);
+        var axis = line.Direction;
+        var center = line.Project(branch.Origin).XYZPoint;
+        double fromStart = (center - line.GetEndPoint(0)).DotProduct(axis);
+        return new OletPlacement(fromStart, line.Length - fromStart, AngleOf(axis, branch.CoordinateSystem.BasisZ),
+            branch.Radius * 2, olet.Symbol.Id, axis, center, main.Id);
+    }
+
+    /// <summary>
+    /// Places a copy of <paramref name="p"/> on <paramref name="target"/>. The target is oriented like
+    /// the source main so "start" means the same end. A pipe too short for the olet is extended at
+    /// the needed end when <paramref name="extend"/> is set and that end is unconnected.
+    /// </summary>
+    /// <returns>The new olet and whether the target was lengthened.</returns>
+    public (FamilyInstance Olet, bool Extended) PlaceCopy(Pipe target, OletPlacement p, OletCopyMode mode, bool extend)
+    {
+        var line = MainLine(target);
+        bool flipped = line.Direction.DotProduct(p.SourceAxis) < 0;
+        var axis = flipped ? line.Direction.Negate() : line.Direction;
+        var start = line.GetEndPoint(flipped ? 1 : 0);
+        double length = line.Length;
+
+        if (p.BranchDiameter > target.Diameter + 1e-6)
+            throw new InvalidOperationException("Olet is larger than this pipe.");
+
+        double along = mode switch
+        {
+            OletCopyMode.FromStart => p.OffsetFromStart,
+            OletCopyMode.FromEnd => length - p.OffsetFromEnd,
+            _ => (p.SourceCenter - start).DotProduct(axis), // same position, projected onto this pipe
+        };
+        double margin = Math.Max(target.Diameter, p.BranchDiameter);
+
+        using var t = new Transaction(doc, "Copy Olet");
+        t.Start();
+
+        bool extended = false;
+        if (along < margin || along > length - margin)
+        {
+            if (!extend) throw new InvalidOperationException("Pipe is too short for the olet at this position.");
+
+            var end = start + axis * length;
+            if (along < margin)
+            {
+                // Grow backwards past the start; positions shift so "along" stays measured from the new start.
+                var newStart = start - axis * (margin - along);
+                EnsureOpenEnd(target, start);
+                SetEnds(target, flipped, newStart, end);
+                start = newStart;
+                along = margin;
+            }
+            else
+            {
+                EnsureOpenEnd(target, end);
+                SetEnds(target, flipped, start, start + axis * (along + margin));
+            }
+            extended = true;
+        }
+
+        var olet = CreateOlet(target, start + axis * along, Direction(axis, p.AngleDegrees), p.BranchDiameter, p.SymbolId, strict: false);
+        t.Commit();
+        return (olet, extended);
+    }
+
+    private static void EnsureOpenEnd(Pipe pipe, XYZ end)
+    {
+        if (Nearest(pipe, end).IsConnected)
+            throw new InvalidOperationException("Pipe is too short and the end that would be extended is connected.");
+    }
+
+    /// <summary>Sets the pipe's curve from oriented start/end, keeping its original drawing direction.</summary>
+    private void SetEnds(Pipe pipe, bool flipped, XYZ orientedStart, XYZ orientedEnd)
+    {
+        ((LocationCurve)pipe.Location).Curve = flipped
+            ? Line.CreateBound(orientedEnd, orientedStart)
+            : Line.CreateBound(orientedStart, orientedEnd);
+        doc.Regenerate();
     }
 
     private static XYZ? Perpendicular(XYZ v, XYZ axis)

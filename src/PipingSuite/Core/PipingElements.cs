@@ -58,3 +58,10 @@ public sealed class PipingSelectionFilter : ISelectionFilter
     public bool AllowElement(Element elem) => PipingElements.IsPiping(elem);
     public bool AllowReference(Reference reference, XYZ position) => false;
 }
+
+/// <summary>Ad-hoc element filter for picks (e.g. "olets only", "pipes only").</summary>
+public sealed class PredicateSelectionFilter(System.Func<Element, bool> allow) : ISelectionFilter
+{
+    public bool AllowElement(Element elem) => allow(elem);
+    public bool AllowReference(Reference reference, XYZ position) => false;
+}

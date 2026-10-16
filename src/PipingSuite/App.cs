@@ -40,6 +40,8 @@ public sealed class App : IExternalApplication
             "Fix small offsets and connect two piping elements. Moves the smaller pipe; the main and fittings stay put. Tees into the main when needed.");
         AddButton<InsertOletCommand>(routing, "Insert\nOlet", "olet", "olet",
             "Click a pipe to place a centred olet (no branch pipe left behind), or click an existing olet to resize it in place.");
+        AddButton<CopyOletCommand>(routing, "Copy\nOlet", "copy_olet", "copy_olet",
+            "Copy an olet's placement (distance, rotation, size, type) onto other pipes in one go. Extends pipes that are too short.");
 
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",

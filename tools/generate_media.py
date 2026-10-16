@@ -165,6 +165,20 @@ def icon_olet(d):
     pipe(d, (64, 6), (64, 26), 14, GHOST)                      # temporary branch (removed)
 
 
+def _mini_olet(d, cx, y, w, color):
+    d.polygon([(cx - w, y), (cx + w, y), (cx + w * 0.6, y - w * 1.2), (cx - w * 0.6, y - w * 1.2)], fill=color)
+
+
+def icon_copy_olet(d):
+    pipe(d, (6, 34), (78, 34), 20)                 # source with olet
+    _mini_olet(d, 42, 24, 12, INK)
+    pipe(d, (50, 76), (122, 76), 20)               # targets receiving copies
+    _mini_olet(d, 86, 66, 12, ORANGE)
+    pipe(d, (50, 114), (122, 114), 20)
+    _mini_olet(d, 86, 104, 12, ORANGE)
+    arrow(d, (20, 60), (20, 100), 6, GREEN)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -173,6 +187,7 @@ ICONS = {
     "align": icon_align,
     "color": icon_color,
     "olet": icon_olet,
+    "copy_olet": icon_copy_olet,
 }
 
 
@@ -329,6 +344,27 @@ def scene_olet(t, d):
     caption(d, "Insert Olet: centred on the main, no branch pipe left")
 
 
+def scene_copy_olet(t, d):
+    f = font(10 * SS, True)
+    pipe(d, s(30, 60), s(190, 60), 18 * SS)                    # source
+    _mini_olet(d, *s(90, 51), 14 * SS, INK)
+    d.text(s(110, 30), "source", font=f, fill=INK, anchor="mm")
+    rows = [(200, 30, 190), (220, 230, 360), (260, 230, 300)]  # (y, x0, x1) – last one is short
+    for i, (y, x0, x1) in enumerate(rows):
+        if i == 2:
+            grow = phase(t, 2.4, 3.0)                           # short pipe is extended to fit
+            x1 = 300 + (330 - 300) * grow
+        pipe(d, s(x0, y - 60 if i == 0 else y - 100), s(x1, y - 60 if i == 0 else y - 100), 18 * SS)
+    targets = [(90, 140), (290, 120), (290, 160)]
+    for i, (x, y) in enumerate(targets):
+        p = phase(t, 1.0 + i * 0.5 + (0.9 if i == 2 else 0), 1.5 + i * 0.5 + (0.9 if i == 2 else 0))
+        if p > 0:
+            _mini_olet(d, *s(x, y - 9), 14 * SS * (0.9 + 0.1 * p), mix(BG, ORANGE, p))
+    if t > 3.0:
+        d.text(s(345, 160), "extended", font=font(9 * SS), fill=GREEN, anchor="lm")
+    caption(d, "Copy Olet: same spot on every selected pipe")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -336,6 +372,7 @@ SCENES = {
     "align": scene_align,
     "color": scene_color,
     "olet": scene_olet,
+    "copy_olet": scene_copy_olet,
 }
 
 

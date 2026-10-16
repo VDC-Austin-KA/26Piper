@@ -83,6 +83,14 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Type:** pick any loaded tap/olet family type, or leave it on Auto. Auto uses the pipe type's own tap, else the first loaded olet, else an `*olet*.rfa` found in your Revit library folders. Routing preferences that don't include a tap (e.g. Junction = Tee) still work: a temporary all-sizes tap rule is added for the takeoff and removed in the same transaction, so the pipe type is unchanged.
 - **Keep placing:** reuse the same settings for each click until you press Esc.
 
+**Copy Olet** (Routing panel):
+- **Select:** preselect the source olet plus the target pipes, or pick them when prompted.
+- **What's copied:** the olet's distance along its main, its rotation around the pipe, its size and its family type are applied to every target.
+- **Placement modes:** the same distance from the start, the same distance from the end, or the same position projected onto each pipe (for stacked or parallel runs).
+- Targets are oriented like the source main, so "start" means the same end even when a pipe was drawn the other way.
+- **Short pipes:** a pipe too short for the olet is lengthened at its free end. If that end is connected, the pipe is skipped and listed in the report.
+- Each olet goes through the same olet-family fallback as Insert Olet. The whole batch is one undo.
+
 ## Roadmap
 
 **Feature B – view filters**
