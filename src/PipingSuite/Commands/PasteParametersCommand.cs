@@ -27,17 +27,22 @@ public sealed class PasteParametersCommand : IExternalCommand
 
         try
         {
-            var targets = uiDoc.Selection.GetElementIds().Select(doc.GetElement).ToList();
+            bool sameDocument = doc.CreationGUID == ParameterClipboard.SourceDocumentGuid;
+            bool IsTarget(ElementId id) => !(sameDocument && id == ParameterClipboard.SourceElementId);
+
+            var targets = uiDoc.Selection.GetElementIds().Where(IsTarget).Select(doc.GetElement).ToList();
             if (targets.Count == 0)
             {
                 targets = uiDoc.Selection
                     .PickObjects(ObjectType.Element, new PipingSelectionFilter(), "Select target elements, then Finish")
+                    .Select(r => r.ElementId)
+                    .Where(IsTarget)
                     .Select(doc.GetElement)
                     .ToList();
             }
 
-            bool sameDocument = doc.CreationGUID == ParameterClipboard.SourceDocumentGuid;
             var outcomes = new Dictionary<PasteOutcome, int>();
+            var problems = new SortedDictionary<string, SortedSet<PasteOutcome>>(StringComparer.OrdinalIgnoreCase);
 
             using (var t = new Transaction(doc, "Paste Parameters"))
             {
@@ -47,11 +52,16 @@ public sealed class PasteParametersCommand : IExternalCommand
                 {
                     var o = ParameterHelper.TryPaste(target, snapshot, sameDocument);
                     outcomes[o] = outcomes.GetValueOrDefault(o) + 1;
+                    if (o != PasteOutcome.Applied)
+                    {
+                        if (!problems.TryGetValue(snapshot.Name, out var set)) problems[snapshot.Name] = set = [];
+                        set.Add(o);
+                    }
                 }
                 t.Commit();
             }
 
-            ShowReport(targets.Count, outcomes);
+            ShowReport(targets.Count, outcomes, problems);
             return Result.Succeeded;
         }
         catch (Autodesk.Revit.Exceptions.OperationCanceledException)
@@ -65,7 +75,8 @@ public sealed class PasteParametersCommand : IExternalCommand
         }
     }
 
-    private static void ShowReport(int targetCount, Dictionary<PasteOutcome, int> outcomes)
+    private static void ShowReport(int targetCount, Dictionary<PasteOutcome, int> outcomes,
+                                   SortedDictionary<string, SortedSet<PasteOutcome>> problems)
     {
         var details = outcomes
             .Where(kv => kv.Key != PasteOutcome.Applied)
@@ -75,6 +86,8 @@ public sealed class PasteParametersCommand : IExternalCommand
         {
             MainInstruction = $"Applied {outcomes.GetValueOrDefault(PasteOutcome.Applied)} value(s) to {targetCount} element(s).",
             MainContent = $"Source: {ParameterClipboard.SourceDescription}{Environment.NewLine}{string.Join(Environment.NewLine, details)}",
+            ExpandedContent = string.Join(Environment.NewLine,
+                problems.Select(kv => $"{kv.Key}: {string.Join(", ", kv.Value)}")),
         }.Show();
     }
 }

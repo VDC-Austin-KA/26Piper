@@ -6,9 +6,9 @@ using PipingSuite.Core;
 
 namespace PipingSuite.Services;
 
-/// <param name="GroupByParameter">Optional parameter (e.g. LINENUMBER) that splits connected runs; null = connectivity only.</param>
+/// <param name="GroupByParameters">Parameters (e.g. PKG + LINENUMBER) whose combined values split connected runs; empty = connectivity only.</param>
 /// <param name="IncludeConnectedFittings">Pull in unselected fittings/accessories touching selected pipes.</param>
-public sealed record AssemblyOptions(string? GroupByParameter, bool IncludeConnectedFittings, string NamePrefix);
+public sealed record AssemblyOptions(IReadOnlyList<string> GroupByParameters, bool IncludeConnectedFittings, string NamePrefix);
 
 public sealed record AssemblyGroup(string? Key, IReadOnlyList<ElementId> ElementIds);
 
@@ -42,7 +42,7 @@ public sealed class AssemblyService(Document doc)
 
         var keys = members.Values.ToDictionary(
             e => e.Id,
-            e => options.GroupByParameter is null ? null : ParameterHelper.GetValueByName(e, options.GroupByParameter));
+            e => GetCompositeKey(e, options.GroupByParameters));
 
         var neighbours = members.Values.ToDictionary(
             e => e.Id,
@@ -57,7 +57,7 @@ public sealed class AssemblyService(Document doc)
 
         // Pass 2: an un-keyed cluster (typically fittings without LINENUMBER) joins the first keyed
         // neighbour it touches. Joining only once stops a blank tee from bridging two lines.
-        if (options.GroupByParameter is not null)
+        if (options.GroupByParameters.Count > 0)
         {
             var rootKey = members.Keys.Where(id => keys[id] is not null)
                                       .GroupBy(uf.Find)
@@ -128,6 +128,14 @@ public sealed class AssemblyService(Document doc)
 
         tg.Assimilate();
         return new AssemblyResult(names, skipped, alreadyAssembled);
+    }
+
+    /// <summary>"PKG9-1" for PKG=PKG9, LINENUMBER=1; null when the element has none of the values.</summary>
+    private static string? GetCompositeKey(Element e, IReadOnlyList<string> parameters)
+    {
+        if (parameters.Count == 0) return null;
+        var values = parameters.Select(p => ParameterHelper.GetValueByName(e, p)).ToList();
+        return values.All(v => v is null) ? null : string.Join("-", values.Select(v => v ?? ""));
     }
 
     private static bool InAssembly(Element e) => e.AssemblyInstanceId != ElementId.InvalidElementId;

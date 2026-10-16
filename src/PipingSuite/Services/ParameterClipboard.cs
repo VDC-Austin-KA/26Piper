@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Autodesk.Revit.DB;
 using PipingSuite.Core;
 
 namespace PipingSuite.Services;
@@ -17,10 +18,14 @@ public static class ParameterClipboard
 
     public static string SourceDescription { get; private set; } = string.Empty;
 
+    /// <summary>Excluded from paste targets: it is often still selected right after Copy.</summary>
+    public static ElementId SourceElementId { get; private set; } = ElementId.InvalidElementId;
+
     public static bool IsEmpty => Items.Count == 0;
 
-    public static void Set(IReadOnlyList<ParameterSnapshot> items, Guid sourceDocumentGuid, string sourceDescription)
+    public static void Set(IReadOnlyList<ParameterSnapshot> items, Guid sourceDocumentGuid, ElementId sourceElementId, string sourceDescription)
     {
+        SourceElementId = sourceElementId;
         Items = items;
         SourceDocumentGuid = sourceDocumentGuid;
         SourceDescription = sourceDescription;

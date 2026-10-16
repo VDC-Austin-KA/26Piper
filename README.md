@@ -51,6 +51,22 @@ The rules are:
 - Paste matches each parameter by shared GUID, then by built-in id, then by name. It only writes when both the storage type and the spec (`ForgeTypeId`) match. ElementId values are only pasted into the source document.
 - The paste runs in one transaction, and a summary dialog reports applied, not found, read-only and mismatched values.
 
+**Copy/Paste fixes (v1.1):** Paste never writes back onto the source element; it used to re-use the selection, which after Copy was still the source. Checkboxes now toggle with a single click. Comments and Mark are ticked by default. A GUID or built-in match no longer fails the spec check. The report lists each parameter that failed, with the reason.
+
+**Multi-parameter assemblies:** tick any number of group-by parameters, e.g. `PKG` + `LINENUMBER`. Elements group only when every value matches. Names look like `PA-PKG9-1-001`.
+
+**Combine Parameters:** pick two project or shared parameters, a separator, and a new name.
+- It creates (or reuses) a text instance shared parameter on the categories both parameters share, then fills it with values like `PKG9-1`.
+- The definition goes into your active shared parameter file under group `PipingSuite`. If none is set, it uses `%AppData%\PipingSuite\SharedParameters.txt`, and your setting is restored afterwards.
+- Values are a snapshot: re-run to refresh them.
+
+**Align & Connect** (Routing panel): pick the element to connect, then what it connects to.
+- **End to end:** the mover slides sideways onto the target's axis and its end stretches to meet. It is then joined directly, or with a union (equal pipes), a transition (different sizes) or an elbow (angled pipe-to-pipe).
+- **Into a main:** if the open end is nearer the body of a pipe than to any open end, the main is split at that point and a tee is inserted.
+- **Which element moves:** by default the smaller pipe moves; fittings and the main never do. You can force the first or second picked element instead.
+- **Options:** the X/Y/Z checkboxes limit which project axes are corrected. A maximum-move tolerance (default 6") refuses large corrections.
+- Everything runs in one transaction, so a failed connection leaves the model unchanged.
+
 ## Roadmap
 
 **Feature B – view filters**

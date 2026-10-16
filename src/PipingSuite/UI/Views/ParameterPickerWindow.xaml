@@ -29,7 +29,14 @@
         <DataGrid ItemsSource="{Binding ItemsView}" AutoGenerateColumns="False" CanUserAddRows="False"
                   HeadersVisibility="Column" GridLinesVisibility="Horizontal">
             <DataGrid.Columns>
-                <DataGridCheckBoxColumn Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="32" />
+                <!-- Template column: toggles on the first click (DataGridCheckBoxColumn needs two). -->
+                <DataGridTemplateColumn Width="32">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Parameter" Binding="{Binding Name}" IsReadOnly="True" Width="2*" />
                 <DataGridTextColumn Header="Value" Binding="{Binding Value}" IsReadOnly="True" Width="2*" />
                 <DataGridTextColumn Header="Origin" Binding="{Binding Origin}" IsReadOnly="True" Width="*" />

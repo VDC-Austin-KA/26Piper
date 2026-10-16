@@ -31,6 +31,12 @@ public static class ParameterHelper
         BuiltInParameter.SYMBOL_ID_PARAM,
     ];
 
+    private static string StripVersion(string typeId)
+    {
+        int dash = typeId.LastIndexOf('-');
+        return dash > 0 ? typeId[..dash] : typeId;
+    }
+
     public static BuiltInParameter GetBuiltIn(Parameter p) =>
         p.Definition is InternalDefinition d ? d.BuiltInParameter : BuiltInParameter.INVALID;
 
@@ -91,8 +97,12 @@ public static class ParameterHelper
         if (p is null) return PasteOutcome.NotFound;
         if (p.IsReadOnly) return PasteOutcome.ReadOnly;
 
-        // A name-only match could hit an unrelated parameter; require identical storage and spec.
-        if (p.StorageType != s.StorageType || p.Definition.GetDataType().TypeId != s.DataTypeId)
+        if (p.StorageType != s.StorageType) return PasteOutcome.TypeMismatch;
+
+        // GUID/built-in matches are the same parameter by definition. A name-only match could hit an
+        // unrelated parameter, so also require the same spec (ignoring the "-2.0.0" schema version).
+        bool nameOnlyMatch = s.SharedGuid is null && s.BuiltIn == BuiltInParameter.INVALID;
+        if (nameOnlyMatch && StripVersion(p.Definition.GetDataType().TypeId) != StripVersion(s.DataTypeId))
             return PasteOutcome.TypeMismatch;
 
         try

@@ -39,7 +39,8 @@ public sealed class CopyParametersCommand : IExternalCommand
             if (!WindowHelper.ShowModal(new ParameterPickerWindow(vm), commandData.Application))
                 return Result.Cancelled;
 
-            ParameterClipboard.Set(vm.SelectedSnapshots, doc.CreationGUID, description);
+            ParameterClipboard.Set(vm.SelectedSnapshots, doc.CreationGUID, source.Id, description);
+            uiDoc.Selection.SetElementIds([]); // so Paste prompts for targets instead of reusing the source
             return Result.Succeeded;
         }
         catch (Autodesk.Revit.Exceptions.OperationCanceledException)

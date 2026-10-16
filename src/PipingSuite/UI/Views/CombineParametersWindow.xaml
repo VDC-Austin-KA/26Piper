@@ -1,0 +1,27 @@
+<Window x:Class="PipingSuite.UI.Views.CombineParametersWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Combine Parameters" Width="400" SizeToContent="Height"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="12">
+        <TextBlock Text="First parameter" />
+        <ComboBox ItemsSource="{Binding ParameterNames}" SelectedItem="{Binding First}" Margin="0,2,0,8" />
+
+        <TextBlock Text="Separator" />
+        <TextBox Text="{Binding Separator, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,8" />
+
+        <TextBlock Text="Second parameter" />
+        <ComboBox ItemsSource="{Binding ParameterNames}" SelectedItem="{Binding Second}" Margin="0,2,0,8" />
+
+        <TextBlock Text="New shared parameter name (text, instance)" />
+        <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,8" />
+
+        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                   Text="Values are written once for every element in the categories both parameters share. Run again after edits to refresh them." />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Combine" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

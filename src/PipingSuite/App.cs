@@ -18,6 +18,11 @@ public sealed class App : IExternalApplication
         panel.AddSeparator();
         AddButton<CopyParametersCommand>(panel, "Copy\nParameters", "Copy chosen parameter values from a source element.");
         AddButton<PasteParametersCommand>(panel, "Paste\nParameters", "Paste copied parameter values onto the selected elements.");
+        AddButton<CombineParametersCommand>(panel, "Combine\nParameters", "Create a shared parameter that joins two existing parameters, e.g. PKG + LINENUMBER.");
+
+        var routing = application.CreateRibbonPanel(TabName, "Routing");
+        AddButton<AlignConnectCommand>(routing, "Align &\nConnect",
+            "Fix small offsets and connect two piping elements. Moves the smaller pipe; the main and fittings stay put. Tees into the main when needed.");
 
         return Result.Succeeded;
     }

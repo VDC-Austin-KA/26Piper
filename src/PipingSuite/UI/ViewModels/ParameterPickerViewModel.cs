@@ -28,10 +28,10 @@ public sealed partial class ParameterPickerViewModel : DialogViewModelBase
     public ParameterPickerViewModel(string sourceDescription, IEnumerable<ParameterSnapshot> snapshots)
     {
         SourceDescription = sourceDescription;
-        // Default: user/shared parameters checked; built-ins (offsets, levels, sizes) opt-in,
-        // since pasting those moves or resizes the targets.
+        // Default: user/shared parameters plus annotation built-ins checked; geometry built-ins
+        // (offsets, levels, sizes) stay opt-in since pasting those moves or resizes the targets.
         Items = new ObservableCollection<ParameterItemViewModel>(
-            snapshots.Select(s => new ParameterItemViewModel(s, s.BuiltIn == Autodesk.Revit.DB.BuiltInParameter.INVALID)));
+            snapshots.Select(s => new ParameterItemViewModel(s, s.BuiltIn == Autodesk.Revit.DB.BuiltInParameter.INVALID || DefaultOnBuiltIns.Contains(s.BuiltIn))));
 
         foreach (var item in Items)
             item.PropertyChanged += (_, _) => AcceptCommand.NotifyCanExecuteChanged();
@@ -41,6 +41,12 @@ public sealed partial class ParameterPickerViewModel : DialogViewModelBase
                                 && (string.IsNullOrWhiteSpace(FilterText)
                                     || i.Name.Contains(FilterText, StringComparison.OrdinalIgnoreCase));
     }
+
+    private static readonly HashSet<Autodesk.Revit.DB.BuiltInParameter> DefaultOnBuiltIns =
+    [
+        Autodesk.Revit.DB.BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS,
+        Autodesk.Revit.DB.BuiltInParameter.ALL_MODEL_MARK,
+    ];
 
     public string SourceDescription { get; }
     public ObservableCollection<ParameterItemViewModel> Items { get; }

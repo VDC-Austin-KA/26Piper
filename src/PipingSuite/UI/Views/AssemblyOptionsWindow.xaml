@@ -6,8 +6,15 @@
     <StackPanel Margin="12">
         <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Margin="0,0,0,10" />
 
-        <TextBlock Text="Group runs by parameter" />
-        <ComboBox ItemsSource="{Binding GroupByOptions}" SelectedItem="{Binding SelectedGroupBy}" Margin="0,2,0,10" />
+        <TextBlock Text="Group runs by parameters (none ticked = connectivity only)" />
+        <TextBox Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter parameter names" Margin="0,2,0,2" />
+        <ListBox ItemsSource="{Binding ParametersView}" Height="180" Margin="0,0,0,10">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelected}" />
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
 
         <CheckBox Content="Include fittings/accessories connected to selected pipes"
                   IsChecked="{Binding IncludeConnectedFittings}" Margin="0,0,0,10" />
