@@ -1,0 +1,39 @@
+<Window x:Class="PipingSuite.UI.Views.ParameterPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        Title="Copy Parameters" Width="560" Height="560" MinWidth="420" MinHeight="360"
+        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding SourceDescription}" FontWeight="SemiBold" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Check visible" Margin="8,0,0,0" Padding="8,2"
+                        Command="{Binding SelectAllCommand}">
+                    <Button.CommandParameter><sys:Boolean>True</sys:Boolean></Button.CommandParameter>
+                </Button>
+                <Button Content="Clear visible" Margin="4,0,0,0" Padding="8,2"
+                        Command="{Binding SelectAllCommand}">
+                    <Button.CommandParameter><sys:Boolean>False</sys:Boolean></Button.CommandParameter>
+                </Button>
+            </StackPanel>
+            <TextBox Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter by parameter name" />
+        </DockPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Copy" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+
+        <DataGrid ItemsSource="{Binding ItemsView}" AutoGenerateColumns="False" CanUserAddRows="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal">
+            <DataGrid.Columns>
+                <DataGridCheckBoxColumn Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" Width="32" />
+                <DataGridTextColumn Header="Parameter" Binding="{Binding Name}" IsReadOnly="True" Width="2*" />
+                <DataGridTextColumn Header="Value" Binding="{Binding Value}" IsReadOnly="True" Width="2*" />
+                <DataGridTextColumn Header="Origin" Binding="{Binding Origin}" IsReadOnly="True" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <!-- Revit 2026 add-in dependency isolation: loads our NuGet deps in a private context. -->
+  <ManifestSettings>
+    <UseRevitContext>False</UseRevitContext>
+    <ContextName>PipingSuite</ContextName>
+  </ManifestSettings>
+  <AddIn Type="Application">
+    <Name>Piping Productivity Suite</Name>
+    <Assembly>PipingSuite\PipingSuite.dll</Assembly>
+    <FullClassName>PipingSuite.App</FullClassName>
+    <AddInId>6F3C8A52-1D4B-4E7A-9B2C-3A5E7D9F1C24</AddInId>
+    <VendorId>PIPR</VendorId>
+    <VendorDescription>Piping Productivity Suite</VendorDescription>
+  </AddIn>
+</RevitAddIns>
