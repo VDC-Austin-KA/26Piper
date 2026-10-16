@@ -18,7 +18,14 @@
     <!-- Reference-only Revit 2026 API assemblies; Revit supplies them at runtime. -->
     <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2026.0.4" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.0.4" ExcludeAssets="runtime" PrivateAssets="all" />
+    <!-- AdWindows: ribbon tooltip video (ExpandedVideo), which the public Revit API does not expose. -->
+    <PackageReference Include="Nice3point.Revit.Api.AdWindows" Version="2026.0.4" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Icons and tooltip clips ship as files: video tooltips need a file URI. Regenerate with tools/generate_media.py. -->
+    <None Update="Resources\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!--
