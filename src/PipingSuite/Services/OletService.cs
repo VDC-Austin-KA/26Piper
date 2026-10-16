@@ -42,8 +42,26 @@ public sealed class OletService(Document doc, View view)
             .Cast<FamilySymbol>()
             .Where(s => s.Family.get_Parameter(BuiltInParameter.FAMILY_CONTENT_PART_TYPE)?.AsInteger() is int pt
                         && TapTypes.Contains((PartType)pt))
-            .OrderBy(s => $"{s.FamilyName}: {s.Name}", StringComparer.OrdinalIgnoreCase)
+            .OrderBy(Rank)
+            .ThenBy(s => $"{s.FamilyName}: {s.Name}", StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+    // Elbolets/latrolets etc. only fit elbows or 45° laterals, so they must never win "Auto".
+    private static readonly string[] SpecialOlets = ["elbolet", "latrolet", "sweepolet", "nipolet", "flangeolet", "coupolet"];
+
+    private static int Rank(FamilySymbol s)
+    {
+        var name = $"{s.FamilyName} {s.Name}";
+        bool Has(string part) => name.Contains(part, StringComparison.OrdinalIgnoreCase);
+        if (SpecialOlets.Any(Has)) return 5;
+        if (Has("weldolet")) return 0;
+        if (Has("threadolet") || Has("sockolet")) return 1;
+        if (Has("olet")) return 2;
+        return 3;
+    }
+
+    /// <summary>Type that last placed successfully under "Auto"; tried first next time this session.</summary>
+    private static ElementId? _lastWorkingAuto;
 
     /// <summary>The main pipe and open branch connector, when <paramref name="e"/> is an olet on a pipe.</summary>
     public static (Pipe Main, Connector Branch)? AsOlet(Element e)
@@ -71,7 +89,7 @@ public sealed class OletService(Document doc, View view)
 
         using var t = new Transaction(doc, "Insert Olet");
         t.Start();
-        var olet = CreateOlet(main, center, Direction(line.Direction, s.AngleDegrees), s.BranchDiameter, s.SymbolId);
+        var olet = CreateOlet(main, center, Direction(line.Direction, s.AngleDegrees), s.BranchDiameter, s.SymbolId, strict: s.SymbolId is not null);
         t.Commit();
         return olet;
     }
@@ -92,7 +110,7 @@ public sealed class OletService(Document doc, View view)
         using var t = new Transaction(doc, "Resize Olet");
         t.Start();
         doc.Delete(olet.Id);
-        var created = CreateOlet(main, center, direction, s.BranchDiameter, symbolId);
+        var created = CreateOlet(main, center, direction, s.BranchDiameter, symbolId, strict: s.SymbolId is not null);
 
         if (attachedPipe is not null && attachedEnd is not null)
         {
@@ -113,7 +131,9 @@ public sealed class OletService(Document doc, View view)
 
     private const string TempRuleMarker = "PipingSuite temporary olet rule";
 
-    private FamilyInstance CreateOlet(Pipe main, XYZ center, XYZ direction, double diameter, ElementId? symbolId)
+    /// <param name="preferred">Olet type to try first; null = Auto.</param>
+    /// <param name="strict">Only try <paramref name="preferred"/> (the user picked it explicitly).</param>
+    private FamilyInstance CreateOlet(Pipe main, XYZ center, XYZ direction, double diameter, ElementId? preferred, bool strict)
     {
         var systemTypeId = main.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM).AsElementId();
         var temp = Pipe.Create(doc, systemTypeId, main.GetTypeId(), main.ReferenceLevel.Id,
@@ -125,22 +145,59 @@ public sealed class OletService(Document doc, View view)
         bool typeHasTap = rpm.PreferredJunctionType == PreferredJunctionType.Tap
                           && rpm.GetNumberOfRules(RoutingPreferenceRuleGroupType.Junctions) > 0;
 
-        // Use the pipe type's own tap only when nothing specific was asked for and it has one;
-        // otherwise drive the takeoff with a chosen/loaded olet family via a temporary rule.
-        var oletSymbol = symbolId is null && typeHasTap ? null : ResolveOletSymbol(symbolId);
         FamilyInstance Build()
         {
             var created = doc.Create.NewTakeoffFitting(Nearest(temp, center), main)
                           ?? throw new InvalidOperationException("Revit could not create a takeoff on this pipe.");
             doc.Delete(temp.Id); // the olet stays on the main with an open branch connector
             doc.Regenerate();
+            if (!created.IsValidObject)
+                throw new InvalidOperationException("Revit removed the olet together with the temporary branch pipe.");
             return created;
         }
 
-        var olet = oletSymbol is null ? Build() : WithTemporaryTapRule(rpm, oletSymbol, Build);
-        if (!olet.IsValidObject)
-            throw new InvalidOperationException("Revit removed the olet together with the temporary branch pipe.");
-        return olet;
+        // Each candidate runs in a sub-transaction, so a refused family leaves no trace before the next try.
+        var tried = new List<string>();
+        string? lastError = null;
+        foreach (var symbol in Candidates(preferred, strict, typeHasTap))
+        {
+            tried.Add(symbol is null ? "pipe type's tap" : $"{symbol.FamilyName}: {symbol.Name}");
+            using var st = new SubTransaction(doc);
+            st.Start();
+            try
+            {
+                if (symbol is not null && !symbol.IsActive) symbol.Activate();
+                var olet = symbol is null ? Build() : WithTemporaryTapRule(rpm, symbol, Build);
+                st.Commit();
+                if (!strict) _lastWorkingAuto = symbol?.Id;
+                return olet;
+            }
+            catch (Exception ex) when (ex is Autodesk.Revit.Exceptions.ApplicationException or InvalidOperationException)
+            {
+                st.RollBack();
+                lastError = ex.Message;
+            }
+        }
+
+        if (tried.Count == 0)
+            throw new InvalidOperationException("No olet family is loaded. Load a tap/olet pipe fitting family (e.g. Weldolet) and try again.");
+        throw new InvalidOperationException($"{lastError} Tried: {string.Join(", ", tried)}.");
+    }
+
+    /// <summary>Order of olet types to try: explicit choice, last success, pipe type's tap, ranked loaded olets, library.</summary>
+    private IEnumerable<FamilySymbol?> Candidates(ElementId? preferred, bool strict, bool typeHasTap)
+    {
+        var seen = new HashSet<ElementId>();
+        var first = preferred ?? _lastWorkingAuto;
+        if (first is not null && doc.GetElement(first) is FamilySymbol p && seen.Add(p.Id)) yield return p;
+        if (strict) yield break;
+
+        if (typeHasTap) yield return null;
+
+        var loaded = GetOletTypes();
+        foreach (var s in loaded.Where(s => seen.Add(s.Id))) yield return s;
+
+        if (loaded.Count == 0 && LoadOletFromLibrary() is { } fromLibrary) yield return fromLibrary;
     }
 
     /// <summary>
@@ -166,18 +223,6 @@ public sealed class OletService(Document doc, View view)
                 if (rpm.GetRule(group, i).Description == TempRuleMarker) rpm.RemoveRule(group, i);
             rpm.PreferredJunctionType = originalJunction;
         }
-    }
-
-    /// <summary>Chosen type, else the first loaded olet type, else an olet family from the Revit library.</summary>
-    private FamilySymbol ResolveOletSymbol(ElementId? symbolId)
-    {
-        var symbol = (symbolId is not null ? doc.GetElement(symbolId) as FamilySymbol : null)
-                     ?? GetOletTypes().FirstOrDefault()
-                     ?? LoadOletFromLibrary()
-                     ?? throw new InvalidOperationException(
-                         "No olet family is loaded. Load a tap/olet pipe fitting family (e.g. Weldolet) and try again.");
-        if (!symbol.IsActive) symbol.Activate();
-        return symbol;
     }
 
     private FamilySymbol? LoadOletFromLibrary()
