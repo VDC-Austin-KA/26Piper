@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Single version for the add-in, the zip package and Setup.exe. -->
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+</Project>

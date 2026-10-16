@@ -8,9 +8,10 @@ Revit 2026 add-in (.NET 8, WPF/MVVM) for piping assemblies, parameter management
 dotnet build PipingSuite.sln -c Release
 ```
 
-A Release build also creates the install package `dist/PipingSuite-<version>.zip` (Revit API references come from NuGet and are not bundled).
+**Installer (recommended):** `dotnet publish installer/Setup -c Release` builds the add-in and creates `dist/PipingSuite-Setup-<version>.exe`. This single exe has the add-in built into it. Close Revit and double-click the exe; there is nothing to extract and no admin rights are needed. It installs to `%AppData%\Autodesk\Revit\Addins\2026\` for the current user. Run it again to update or uninstall. It uses the .NET 8 runtime that Revit 2026 already installs.
 
-**Install:** unzip, close Revit, double-click `Install.bat`. It is a per-user install, so no admin rights are needed. It copies the files to `%AppData%\Autodesk\Revit\Addins\2026\` and replaces any previous version. `Uninstall.bat` removes them.
+**Zip (fallback):** a Release build also creates `dist/PipingSuite-<version>.zip`. Extract it, then run `Install.bat`.
+
 The manifest turns on Revit 2026 add-in dependency isolation (`UseRevitContext=False`), so our CommunityToolkit.Mvvm version can't clash with other add-ins.
 
 ## Layout

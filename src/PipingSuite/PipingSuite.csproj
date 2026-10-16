@@ -8,7 +8,6 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>PipingSuite</RootNamespace>
-    <Version>1.0.0</Version>
     <!-- Copies NuGet dependencies (CommunityToolkit.Mvvm) next to the add-in DLL. -->
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <!-- Allows building on non-Windows CI agents; Revit itself only runs on Windows. -->

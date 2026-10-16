@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    One-file installer: dotnet publish installer/Setup -c Release
+    produces dist/PipingSuite-Setup-<Version>.exe with the add-in embedded.
+    Framework-dependent on the .NET 8 runtime that Revit 2026 already installs.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>PipingSuite-Setup</AssemblyName>
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../..'))</RepoRoot>
+    <AddinProjectDir>$(RepoRoot)/src/PipingSuite</AddinProjectDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Build order only: the add-in must be compiled before its files are embedded. -->
+    <ProjectReference Include="$(AddinProjectDir)/PipingSuite.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile" />
+  </ItemGroup>
+
+  <!-- Runs after the add-in build, so the glob sees fresh binaries even on a clean checkout. -->
+  <Target Name="EmbedAddinPayload" BeforeTargets="PrepareResourceNames" AfterTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <_AddinBinaries Include="$(AddinProjectDir)/bin/$(Configuration)/net8.0-windows/**/*" Exclude="**/*.addin" />
+      <EmbeddedResource Include="@(_AddinBinaries)" LogicalName="payload/PipingSuite/%(RecursiveDir)%(Filename)%(Extension)" />
+      <EmbeddedResource Include="$(AddinProjectDir)/PipingSuite.addin" LogicalName="payload/PipingSuite.addin" />
+    </ItemGroup>
+    <Error Condition="'@(_AddinBinaries)' == ''" Text="Add-in binaries not found; build src/PipingSuite in $(Configuration) first." />
+  </Target>
+
+  <Target Name="CopySetupToDist" AfterTargets="Publish">
+    <Copy SourceFiles="$(PublishDir)$(AssemblyName).exe" DestinationFiles="$(RepoRoot)/dist/PipingSuite-Setup-$(Version).exe" />
+    <Message Importance="high" Text="Installer: $(RepoRoot)/dist/PipingSuite-Setup-$(Version).exe" />
+  </Target>
+
+</Project>

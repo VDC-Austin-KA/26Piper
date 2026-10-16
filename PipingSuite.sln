@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F116D331-CB8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PipingSuite", "src\PipingSuite\PipingSuite.csproj", "{A91D3771-995E-4A8F-9798-177A9E5AD603}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "installer", "installer", "{DF1FFB96-4665-4BE8-9875-173F88A9A568}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Setup", "installer\Setup\Setup.csproj", "{B2E4797C-029D-457A-A734-9C48CDC59B58}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,8 +24,13 @@ Global
 		{A91D3771-995E-4A8F-9798-177A9E5AD603}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A91D3771-995E-4A8F-9798-177A9E5AD603}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A91D3771-995E-4A8F-9798-177A9E5AD603}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B2E4797C-029D-457A-A734-9C48CDC59B58}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2E4797C-029D-457A-A734-9C48CDC59B58}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B2E4797C-029D-457A-A734-9C48CDC59B58}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B2E4797C-029D-457A-A734-9C48CDC59B58}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{A91D3771-995E-4A8F-9798-177A9E5AD603} = {F116D331-CB88-4AF4-984F-395C9AE10CE8}
+		{B2E4797C-029D-457A-A734-9C48CDC59B58} = {DF1FFB96-4665-4BE8-9875-173F88A9A568}
 	EndGlobalSection
 EndGlobal
