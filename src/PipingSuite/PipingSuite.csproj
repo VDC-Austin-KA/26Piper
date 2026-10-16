@@ -8,6 +8,7 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>PipingSuite</RootNamespace>
+    <Version>1.0.0</Version>
     <!-- Copies NuGet dependencies (CommunityToolkit.Mvvm) next to the add-in DLL. -->
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <!-- Allows building on non-Windows CI agents; Revit itself only runs on Windows. -->
@@ -21,8 +22,26 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="PipingSuite.addin" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <!--
+    Release builds also produce dist/PipingSuite-<Version>.zip:
+      Install.bat, Uninstall.bat, README.txt, PipingSuite.addin, PipingSuite/<binaries>
+  -->
+  <Target Name="CreateInstallPackage" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../..'))</RepoRoot>
+      <DistDir>$(RepoRoot)/dist</DistDir>
+      <StageDir>$(DistDir)/PipingSuite-$(Version)</StageDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <PackageBinaries Include="$(OutDir)**/*" />
+      <InstallerFiles Include="$(RepoRoot)/installer/*" />
+    </ItemGroup>
+
+    <RemoveDir Directories="$(StageDir)" />
+    <Copy SourceFiles="@(PackageBinaries)" DestinationFolder="$(StageDir)/PipingSuite/%(RecursiveDir)" />
+    <Copy SourceFiles="@(InstallerFiles);PipingSuite.addin" DestinationFolder="$(StageDir)" />
+    <ZipDirectory SourceDirectory="$(StageDir)" DestinationFile="$(DistDir)/PipingSuite-$(Version).zip" Overwrite="true" />
+    <Message Importance="high" Text="Install package: $(DistDir)/PipingSuite-$(Version).zip" />
+  </Target>
 
 </Project>
