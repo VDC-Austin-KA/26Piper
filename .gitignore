@@ -2,4 +2,5 @@ bin/
 obj/
 .vs/
 *.user
-dist/
+dist/*
+!dist/PipingSuite-Setup-*.exe
