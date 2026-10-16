@@ -70,7 +70,7 @@ The rules are:
 **Color Splasher** (Visualize panel) is an independent reimplementation of the workflow from BIM One's MIT-licensed [Color Splasher](https://github.com/bimone/addins-colorsplasher):
 1. Tick the categories visible in the active view, then pick any instance or type parameter.
 2. Each distinct value gets a distinct color, and elements without a value are grouped as `(no value)`.
-3. Click a swatch to change a color (Revit's own color dialog). **Random** gives new colors, **Gradient** blends from the first color to the last, and **Select** selects that value's elements.
+3. Click a swatch to change a color (Revit's own color dialog). **Random** gives new distinct colors, **Gradient** blends around the color wheel from the first color to the last, **Rainbow** spreads red→violet across every value (tick **Auto rainbow** to do this automatically for each parameter), and **Select** selects that value's elements.
 4. **Apply** overrides projection and cut lines plus solid surface and cut fill, for these elements in this view only. **Clear** removes those overrides.
 
 Color schemes save to and load from `.json` files. The window stays open while you apply, so you can adjust and re-apply.

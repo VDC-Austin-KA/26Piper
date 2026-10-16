@@ -12,7 +12,9 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal">
                 <Button Content="Random" Padding="10,2" Command="{Binding RandomColorsCommand}" ToolTip="New distinct colors" />
-                <Button Content="Gradient" Padding="10,2" Margin="4,0,0,0" Command="{Binding GradientCommand}" ToolTip="Blend from the first value's color to the last" />
+                <Button Content="Gradient" Padding="10,2" Margin="4,0,0,0" Command="{Binding GradientCommand}" ToolTip="Blend around the color wheel from the first value's color to the last" />
+                <Button Content="Rainbow" Padding="10,2" Margin="4,0,0,0" Command="{Binding RainbowCommand}" ToolTip="Spread red to violet across all values" />
+                <CheckBox Content="Auto rainbow" IsChecked="{Binding AutoRainbow}" VerticalAlignment="Center" Margin="8,0,0,0" ToolTip="Color every parameter's values as a rainbow automatically" />
                 <Button Content="Load…" Padding="10,2" Margin="12,0,0,0" Command="{Binding LoadSchemeCommand}" />
                 <Button Content="Save…" Padding="10,2" Margin="4,0,0,0" Command="{Binding SaveSchemeCommand}" />
                 <TextBlock Text="{Binding Status}" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="Gray" />

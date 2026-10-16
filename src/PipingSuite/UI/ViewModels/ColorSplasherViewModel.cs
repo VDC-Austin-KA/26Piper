@@ -78,6 +78,16 @@ public sealed partial class ColorSplasherViewModel : ObservableObject
     [ObservableProperty] private string? _selectedParameter;
     [ObservableProperty] private string _status = "Pick one or more categories, then a parameter.";
 
+    /// <summary>When on, every value list is coloured red→violet automatically; remembered for the session.</summary>
+    [ObservableProperty] private bool _autoRainbow = _autoRainbowSession;
+    private static bool _autoRainbowSession;
+
+    partial void OnAutoRainbowChanged(bool value)
+    {
+        _autoRainbowSession = value;
+        if (value) Rainbow();
+    }
+
     partial void OnCategoryFilterChanged(string value) => CategoriesView.Refresh();
     partial void OnParameterFilterChanged(string value) => ParametersView.Refresh();
     partial void OnSelectedParameterChanged(string? value) => LoadValues();
@@ -112,6 +122,7 @@ public sealed partial class ColorSplasherViewModel : ObservableObject
             palette.MoveNext();
             Values.Add(new SplashValueItem(v, _remembered.TryGetValue(v.Value, out var c) ? c : palette.Current));
         }
+        if (AutoRainbow) Rainbow();
         Status = $"{values.Count} value(s), {values.Sum(v => v.ElementIds.Count)} element(s).";
     }
 
@@ -129,14 +140,26 @@ public sealed partial class ColorSplasherViewModel : ObservableObject
             _remembered[Values[i].Value] = Values[i++].Color = c;
     }
 
-    /// <summary>Blend from the first value's colour to the last one's.</summary>
+    /// <summary>
+    /// Blend from the first value's colour to the last one's around the hue wheel, so the
+    /// in-between values pick up the hues in between (red→blue passes yellow and green).
+    /// </summary>
     [RelayCommand]
     private void Gradient()
     {
         if (Values.Count < 3) return;
         Color a = Values[0].Color, b = Values[^1].Color;
         for (int i = 1; i < Values.Count - 1; i++)
-            _remembered[Values[i].Value] = Values[i].Color = Palette.Lerp(a, b, i / (double)(Values.Count - 1));
+            _remembered[Values[i].Value] = Values[i].Color = Palette.LerpHue(a, b, i / (double)(Values.Count - 1));
+    }
+
+    /// <summary>Full spectrum, red→violet, evenly across all values in list order.</summary>
+    [RelayCommand]
+    private void Rainbow()
+    {
+        int i = 0;
+        foreach (var c in Palette.Rainbow(Values.Count))
+            _remembered[Values[i].Value] = Values[i++].Color = c;
     }
 
     [RelayCommand]
@@ -211,8 +234,32 @@ public static class Palette
         }
     }
 
-    public static Color Lerp(Color a, Color b, double t) => Color.FromRgb(
-        (byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
+    /// <summary>Hues 0° (red) to 280° (violet); stopping short of 360° keeps the ends distinct.</summary>
+    public static IEnumerable<Color> Rainbow(int count)
+    {
+        for (int i = 0; i < count; i++)
+            yield return FromHsv(count == 1 ? 0 : 280.0 * i / (count - 1), 0.80, 0.92);
+    }
+
+    /// <summary>Interpolates hue, saturation and value separately (keeps colours vivid mid-way).</summary>
+    public static Color LerpHue(Color a, Color b, double t)
+    {
+        var (h1, s1, v1) = ToHsv(a);
+        var (h2, s2, v2) = ToHsv(b);
+        double h = (h1 + (h2 - h1) * t + 360) % 360;
+        return FromHsv(h, s1 + (s2 - s1) * t, v1 + (v2 - v1) * t);
+    }
+
+    private static (double H, double S, double V) ToHsv(Color c)
+    {
+        double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
+        double max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b)), d = max - min;
+        double h = d == 0 ? 0
+            : max == r ? 60 * ((g - b) / d % 6)
+            : max == g ? 60 * ((b - r) / d + 2)
+            : 60 * ((r - g) / d + 4);
+        return ((h + 360) % 360, max == 0 ? 0 : d / max, max);
+    }
 
     private static Color FromHsv(double h, double s, double v)
     {
