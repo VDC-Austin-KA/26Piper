@@ -35,7 +35,8 @@ public sealed class ColorSplasherService(Document doc, View view)
             .ThenBy(v => v.Value, NaturalComparer.Instance)
             .ToList();
 
-    public void Apply(IEnumerable<(IReadOnlyList<ElementId> Ids, Color Color)> entries)
+    /// <param name="colorLines">False keeps edges black (shaded iso maps); only the surface and cut fills are coloured.</param>
+    public void Apply(IEnumerable<(IReadOnlyList<ElementId> Ids, Color Color)> entries, bool colorLines = true)
     {
         var solidFill = new FilteredElementCollector(doc).OfClass(typeof(FillPatternElement))
             .Cast<FillPatternElement>()
@@ -46,10 +47,9 @@ public sealed class ColorSplasherService(Document doc, View view)
         foreach (var (ids, color) in entries)
         {
             var ogs = new OverrideGraphicSettings()
-                .SetProjectionLineColor(color)
-                .SetCutLineColor(color)
                 .SetSurfaceForegroundPatternColor(color)
                 .SetCutForegroundPatternColor(color);
+            if (colorLines) ogs.SetProjectionLineColor(color).SetCutLineColor(color);
             if (solidFill is not null)
                 ogs.SetSurfaceForegroundPatternId(solidFill).SetCutForegroundPatternId(solidFill);
 
@@ -98,7 +98,7 @@ public sealed class ColorSplasherService(Document doc, View view)
     }
 
     /// <summary>Sorts "L2" before "L10".</summary>
-    private sealed class NaturalComparer : IComparer<string>
+    internal sealed class NaturalComparer : IComparer<string>
     {
         public static readonly NaturalComparer Instance = new();
 
