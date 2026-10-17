@@ -39,7 +39,7 @@ public sealed class IsoMapCommand : IExternalCommand
             var packages = selected.Select(IsoMapService.GetPackage).OfType<string>()
                 .GroupBy(p => p).OrderByDescending(g => g.Count()).Select(g => g.Key).ToList();
             var tagStatus = service.FindTagType() is null
-                ? $"\"{IsoMapService.TagFamily} : {IsoMapService.TagType}\" is not loaded; load it to tag pipes."
+                ? $"\"{IsoMapService.TagFamily} : {IsoMapService.TagType}\" is not loaded; load it to tag line segments."
                 : $"Uses \"{IsoMapService.TagFamily} : {IsoMapService.TagType}\".";
 
             var vm = new IsoMapViewModel(

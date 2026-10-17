@@ -16,15 +16,18 @@
         <TextBlock Text="Lock the isometric from corner" />
         <ComboBox ItemsSource="{Binding Corners}" SelectedItem="{Binding SelectedCorner}" Margin="0,2,0,8" />
 
+        <TextBlock Text="View scale (sets tag size against the piping)" />
+        <ComboBox ItemsSource="{Binding Scales}" SelectedItem="{Binding SelectedScale}" Margin="0,2,0,8" />
+
         <TextBlock Text="Color by parameter" />
         <TextBox Text="{Binding ColorParameter, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,4" />
         <CheckBox Content="Rainbow gradient (otherwise distinct colors)" IsChecked="{Binding Rainbow}" Margin="0,2,0,8" />
 
-        <CheckBox Content="Tag pipes" IsChecked="{Binding TagPipes}" Margin="0,2,0,2" />
+        <CheckBox Content="Tag each line segment" IsChecked="{Binding TagSegments}" Margin="0,2,0,2" />
         <TextBlock Text="{Binding TagStatus}" TextWrapping="Wrap" Foreground="Gray" Margin="20,0,0,8" />
 
         <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
-                   Text="Creates a new locked 3D view showing only the selection. Tags are spread along the short side and the crop is made square for sheet placement. One undo removes the view." />
+                   Text="Creates a new locked, shaded 3D view showing only the selection. Each line segment gets one tag on its longest pipe; tags stack in a column with leaders, on whichever side keeps the view squarest, and the crop is made square for sheet placement. One undo removes the view." />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Create" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />

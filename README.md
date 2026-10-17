@@ -91,15 +91,17 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Short pipes:** a pipe too short for the olet is lengthened at its free end. If that end is connected, the pipe is skipped and listed in the report.
 - Each olet goes through the same olet-family fallback as Insert Olet. The whole batch is one undo.
 
-**ISO Map** (Visualize panel):
+**ISO Map** (Visualize panel) makes sheet-ready isometrics like enlarged rack ISO maps:
 - **Select:** preselect the elements, or pick them when prompted (window selection works). Only the selection is shown in the new view.
 - **Name:** `ISO MAP - <package>`, where the package comes from `PACKAGE`, else `BC_PACKAGE`. The most common value in the selection is offered first; you can pick another or type over it. A clash with an existing view name gets ` (2)` etc.
-- **Corner:** choose which of the four plan corners (SW, SE, NE, NW) the isometric looks from. The view is then saved and locked at that orientation. The last corner is remembered for the session.
-- **Isolate:** the selection is isolated permanently (not the temporary isolate) and wrapped in a section box, so later model additions nearby stay out of the map. The section box itself is hidden.
-- **Color:** elements are colored per value of `BC_LINE SEGMENT` (editable) with the Color Splasher overrides, rainbow red→violet by default or distinct colors. Elements with no value keep their normal graphics.
-- **Tags:** every pipe is tagged with `ISO Tag : Pipe Size System Tag`. Tags go beside each pipe's midpoint along the content's short side (above/below a wide run, left/right of a tall one), facing away from the centre. A tag that would overlap another steps further out and gets a leader. If the tag type isn't loaded the view is still made and the report says so.
-- **Square crop:** the crop region is fitted around the elements and tags, then made square and centred with a small margin, so maps tile evenly on a sheet. The crop boundary is hidden.
-- Everything is one undo. Revit then opens the new view and reports the colors and tag count.
+- **Corner:** choose which of the four plan corners (SW, SE, NE, NW) the isometric looks from. The view is then saved and locked at that orientation.
+- **Scale:** the view scale (default 1/2" = 1'-0") sets how big the tags are against the piping. Corner and scale are remembered for the session.
+- **Graphics:** Fine detail, shaded with edges. The selection is isolated permanently and wrapped in a hidden section box, so later model additions nearby stay out of the map. If the 3D view type applies a view template, its scale, detail level and style are kept and the report says so.
+- **Color:** each `BC_LINE SEGMENT` value (editable) gets a color, rainbow red→violet by default or distinct colors. Surfaces are filled through the Color Splasher overrides and edges stay black. Elements with no value keep their normal graphics.
+- **Tags:** one `ISO Tag : Pipe Size System Tag` per line segment, on that segment's longest pipe. Tags stack in a column beside the piping, aligned on the side facing it, each with a horizontal shoulder and a leader to the part of its pipe nearest the column. Rows are ordered so leaders don't cross each other.
+- **Layout:** a single column on the right, a single column on the left, and a split (branches above the run on one side, below on the other) are each tried at a range of heights. The layout with the squarest overall footprint wins; ties go to the one whose leaders cross the fewest pipes, then the shortest leaders.
+- **Square crop:** the crop is fitted around the piping and tags, then made square and centred with a small margin, so maps tile evenly on a sheet. The crop boundary is hidden.
+- If the tag type isn't loaded, the view is still made and the report says so. Everything is one undo. Revit then opens the new view and reports the colors and tag count.
 
 ## Roadmap
 

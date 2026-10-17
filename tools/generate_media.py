@@ -387,19 +387,20 @@ def scene_iso_map(t, d):
     pts = [s(*_iso(*p, 99, 112, 11)) for p in run]
     for i, (a, b) in enumerate(zip(pts, pts[1:])):
         pipe(d, a, b, 8 * SS, mix(GHOST, colors[i], phase(t, 0.6 + i * 0.25, 1.1 + i * 0.25)))
-    for i, (a, b) in enumerate(zip(pts, pts[1:])):                   # tags pushed off the pipe
+    for i, (a, b) in enumerate(zip(pts, pts[1:])):                   # one tag per segment, stacked in a column
         p = phase(t, 1.9 + i * 0.25, 2.3 + i * 0.25)
         if p > 0:
             mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-            dx, dy = [(-23, 10), (-58, -7), (-23, -30), (-10, 10)][i]   # beside each run, clear of the others
-            tag(d, mx + dx * SS, my + dy * SS, 46 * SS, 14 * SS, mix(BG, INK, p), f'{2 + i}" CW', f)
+            y = s(0, 40 + [3, 2, 0, 1][i] * 26)[1]                     # row order that keeps leaders uncrossed
+            col = mix(BG, INK, p)
+            d.line([(mx, my), s(236, 0)[0:1] + (y,), s(250, 0)[0:1] + (y,)], fill=col, width=SS)
+            d.text((s(252, 0)[0], y), f"CW-PKG9-{i + 1:02d}", font=f, fill=col, anchor="lm")
     sq = phase(t, 3.2, 3.8)                                          # crop snaps to a square
     if sq > 0:
         side = 190 * (0.9 + 0.1 * sq)
         x0, y0 = 70 + (190 - side) / 2, 10 + (190 - side) / 2
         dashed_rect(d, (*s(x0, y0), *s(x0 + side, y0 + side)), ORANGE, 2 * SS, 6 * SS, sq)
-        d.text(s(330, 100), "ISO MAP - PKG9", font=font(10 * SS, True), fill=mix(BG, INK, sq), anchor="mm")
-    caption(d, "ISO Map: locked iso, colored by line segment, tagged, square")
+    caption(d, "ISO Map: locked iso, colored and tagged by line segment, square")
 
 
 SCENES = {
