@@ -103,6 +103,15 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Square crop:** the crop is fitted around the piping and tags, then made square and centred with a small margin, so maps tile evenly on a sheet. The crop boundary is hidden.
 - If the tag type isn't loaded, the view is still made and the report says so. Everything is one undo. Revit then opens the new view and reports the colors and tag count.
 
+**Overall Map** (Visualize panel) makes an overall package key plan:
+- **Start:** open the floor plan to base it on, then preselect the piping or window-select it when prompted.
+- **View:** the plan is duplicated with its detailing as `ISO MAP - OVERALL - <common package prefix>` (e.g. `PKG 6` from `PKG 6 - A`…`D`). The name is editable.
+- **Boxes:** each connected spool with the same `PACKAGE` (else `BC_PACKAGE`) value gets one filled-region box around it, padded 6". Fittings with no value join the run they touch. Boxes follow the plan's own axes, so they stay square on a rotated plan.
+- **Color:** one color per package value, rainbow by default or distinct colors. Each color lives on a filled region type named `ISO MAP - <value>`. Change the color there and later runs keep it.
+- **Translucency:** boxes get a surface transparency override (default 50%, remembered for the session), so the piping reads through them.
+- **Legend:** swatches in the same colors, with the package names inside, stacked to the left of the boxes and top-aligned with them.
+- Everything is one undo. Revit then opens the new view and reports the box count.
+
 ## Roadmap
 
 **Feature B – view filters**

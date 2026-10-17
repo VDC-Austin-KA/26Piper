@@ -193,6 +193,19 @@ def icon_iso_map(d):
     tag(d, 44, 92, 66, 22, ORANGE)
 
 
+YELLOW, BLUE = (240, 190, 60), (90, 140, 210)
+KEY = [YELLOW, GREEN, RED, BLUE]
+
+
+def icon_overall_map(d):
+    for r in range(3):                                                    # translucent box per spool
+        for c in range(3):
+            col = KEY[(r * 3 + c) % 4]
+            x, y = 10 + c * 40, 10 + r * 40
+            d.rectangle([x, y, x + 30, y + 30], fill=col + (150,), outline=col, width=3)
+            d.line([(x + 15, y + 4), (x + 15, y + 26)], fill=INK, width=4)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -203,6 +216,7 @@ ICONS = {
     "olet": icon_olet,
     "copy_olet": icon_copy_olet,
     "iso_map": icon_iso_map,
+    "overall_map": icon_overall_map,
 }
 
 
@@ -403,6 +417,26 @@ def scene_iso_map(t, d):
     caption(d, "ISO Map: locked iso, colored and tagged by line segment, square")
 
 
+def scene_overall_map(t, d):
+    f = font(9 * SS, True)
+    for i in range(24):                                                   # boxes fade in per spool, under the piping
+        r, c = divmod(i, 6)
+        p = phase(t, 0.6 + i * 0.06, 1.0 + i * 0.06)
+        x, y = 130 + c * 42, 20 + r * 44
+        if p > 0:
+            col = KEY[(r * 2 + c) % 4]
+            d.rectangle([*s(x + 2, y - 3), *s(x + 26, y + 37)], fill=mix(BG, col, 0.45 * p), outline=mix(BG, col, p), width=SS)
+        d.line([*s(x + 14, y), *s(x + 14, y + 34)], fill=PIPE, width=3 * SS)
+        d.line([*s(x + 6, y + 17), *s(x + 22, y + 17)], fill=INK, width=2 * SS)
+    lp = phase(t, 2.6, 3.2)
+    if lp > 0:                                                            # legend
+        for i, col in enumerate(KEY):
+            y = 40 + i * 30
+            d.rectangle([*s(20, y), *s(100, y + 22)], fill=mix(BG, mix(WHITE, col, 0.55), lp), outline=mix(BG, col, lp), width=SS)
+            d.text(s(26, y + 11), f"PKG 6 - {'ABCD'[i]}", font=f, fill=mix(BG, INK, lp), anchor="lm")
+    caption(d, "Overall Map: a translucent box per spool, colored by package")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -412,6 +446,7 @@ SCENES = {
     "olet": scene_olet,
     "copy_olet": scene_copy_olet,
     "iso_map": scene_iso_map,
+    "overall_map": scene_overall_map,
 }
 
 
