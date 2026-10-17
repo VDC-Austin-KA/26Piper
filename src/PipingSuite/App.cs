@@ -48,6 +48,8 @@ public sealed class App : IExternalApplication
             "Color elements in the active view by the value of any parameter. Save and load color schemes.");
         AddButton<IsoMapCommand>(view, "ISO\nMap", "iso_map", "iso_map",
             "Make a locked isometric of the selection named \"ISO MAP - <PACKAGE>\": shaded, colored and tagged by BC_LINE SEGMENT, cropped square for sheets.");
+        AddButton<OverallMapCommand>(view, "Overall\nMap", "overall_map", "overall_map",
+            "Key plan of the selection: duplicates the active plan and boxes each spool in a translucent color per PACKAGE value, with a legend.");
 
         application.ControlledApplication.ApplicationInitialized += (_, _) => AttachVideoTooltips();
         return Result.Succeeded;
