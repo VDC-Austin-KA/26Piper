@@ -43,6 +43,11 @@ public sealed record Source(IReadOnlyList<Element> Elements, ElementId? Assembly
 /// <summary>An old branch and where the source lands in its place (source pose → this branch's pose).</summary>
 public sealed record Target(Branch Old, Transform Place);
 
+/// <summary>How alike a branch must be to a picked one to count as a match.</summary>
+/// <param name="LengthTolerance">How far (ft) each leg's length may differ; null = any length (stretched to fit).</param>
+/// <param name="AnyDirection">Also match branches facing other ways (other side of a header, another header direction).</param>
+public sealed record MatchRules(double? LengthTolerance, bool AnyDirection);
+
 /// <summary>Numbering for each placement: <paramref name="Start"/> on the first, stepped once per placement after.</summary>
 public sealed record Numbering(string Parameter, IncrementMode Mode, string Start);
 
@@ -50,10 +55,10 @@ public sealed record ReplaceResult(int Replaced, IReadOnlyList<ElementId> NewIds
 
 /// <summary>
 /// Replace Configuration. Branches are compared by route: the straight legs from the header connection to
-/// the far end, each leg's direction (relative to the way the branch leaves its header, keeping up as up)
-/// and pipe size. Components and lengths are free to differ, since those are what is wrong with the bad
-/// branches. The correct branch is placed on each match's header and every leg is stretched or shortened
-/// to that branch's own leg lengths, so it ends exactly where the old one did and reconnects there.
+/// the far end, each leg's direction and pipe size, and (by default) its length. Components are free to
+/// differ, since those are what is wrong with the bad branches; <see cref="MatchRules"/> decides how strict
+/// lengths and directions are. The correct branch is placed on each match's header and every leg is
+/// stretched or shortened to that branch's own leg lengths, so it ends exactly where the old one did.
 /// </summary>
 public sealed class ReplaceConfigurationService(Document doc)
 {
@@ -126,7 +131,7 @@ public sealed class ReplaceConfigurationService(Document doc)
     /// at a header fitting's branch outlet (a tee's side, an olet's outlet) of the same size and system type,
     /// and its legs turn the same way at the same sizes. Also returns a one-line account of what was checked.
     /// </summary>
-    public (List<Branch> Matches, string Report) FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude)
+    public (List<Branch> Matches, string Report) FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude, MatchRules rules)
     {
         var matches = new List<Branch>();
         var taken = new HashSet<ElementId>(exclude.Concat(picked.SelectMany(b => b.Ids)));
@@ -158,7 +163,7 @@ public sealed class ReplaceConfigurationService(Document doc)
                     var (chain, _) = Walk(root, o => taken.Contains(o.Id) || (reference.Route.TerminalKey is { } k && Key(o) == k));
                     if (chain.Count == 0) continue;
                     var route = new Route(chain, Legs(chain), reference.Route.TerminalKey);
-                    var why = BestTurn(reference.Route, frame, route, root.Origin, root.CoordinateSystem.BasisZ.Negate(), out _);
+                    var why = Check(reference.Route, frame, route, root.Origin, root.CoordinateSystem.BasisZ.Negate(), rules);
                     if (why is not null)
                     {
                         reasons[why] = reasons.GetValueOrDefault(why) + 1;
@@ -183,6 +188,29 @@ public sealed class ReplaceConfigurationService(Document doc)
         var report = $"checked {starts} header outlet(s) of the same size and system type: {matches.Count} match" +
                      string.Concat(reasons.OrderByDescending(r => r.Value).Select(r => $"; {r.Value} {r.Key}"));
         return (matches, report);
+    }
+
+    /// <summary>
+    /// Why route <paramref name="b"/> is not a match for <paramref name="a"/> under <paramref name="rules"/>, or
+    /// null when it is: same number of legs and sizes; legs running the same compass directions (or, with
+    /// <see cref="MatchRules.AnyDirection"/>, the same way relative to their header, keeping up as up); and
+    /// each leg within the length tolerance when there is one.
+    /// </summary>
+    private static string? Check(Route a, Transform frameA, Route b, XYZ origin, XYZ outward, MatchRules rules)
+    {
+        if (rules.AnyDirection)
+        {
+            if (BestTurn(a, frameA, b, origin, outward, out _) is { } why) return why;
+        }
+        else
+        {
+            if (a.Legs.Count != b.Legs.Count) return $"have {b.Legs.Count} leg(s), not {a.Legs.Count}";
+            if (a.Legs.Zip(b.Legs).Any(p => p.First.Dir.DotProduct(p.Second.Dir) < SameDir)) return "run in other directions";
+            if (a.Legs.Zip(b.Legs).Any(p => Math.Abs(p.First.Radius - p.Second.Radius) > 1e-4)) return "differ in pipe size";
+        }
+        if (rules.LengthTolerance is { } tolerance && a.Legs.Zip(b.Legs).Any(p => Math.Abs(p.First.Length - p.Second.Length) > tolerance))
+            return "have different leg lengths";
+        return null;
     }
 
     /// <summary>

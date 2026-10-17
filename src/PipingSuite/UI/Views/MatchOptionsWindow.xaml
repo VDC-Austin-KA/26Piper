@@ -1,0 +1,39 @@
+<Window x:Class="PipingSuite.UI.Views.MatchOptionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Replace Configuration - Match options" Width="440" SizeToContent="Height"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="12">
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,10" />
+
+        <TextBlock Text="A branch matches when its legs have the same count and pipe sizes as the picked one, and:" TextWrapping="Wrap" Margin="0,0,0,6" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,2,0,2">
+            <TextBlock Text="each leg's length is within" VerticalAlignment="Center" />
+            <TextBox Text="{Binding ToleranceInches, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="6,0,4,0">
+                <TextBox.Style>
+                    <Style TargetType="TextBox">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding AnyLength}" Value="True">
+                                <Setter Property="IsEnabled" Value="False" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+            <TextBlock Text="in of the picked branch's" VerticalAlignment="Center" />
+        </StackPanel>
+        <CheckBox Content="Any length (stretch the correct branch to fit each one)" IsChecked="{Binding AnyLength}" Margin="0,4,0,8" />
+
+        <TextBlock Text="its legs run the same compass directions as the picked branch's." TextWrapping="Wrap" />
+        <CheckBox Content="Also branches facing other ways (other side of a header, another header direction)" IsChecked="{Binding AnyDirection}" Margin="0,4,0,10" />
+
+        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                   Text="Valves, olets and other components never have to match: those are what gets fixed. Up always stays up. The next step shows every match in the model for you to check." />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Find matches" Padding="10,2" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

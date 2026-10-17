@@ -115,14 +115,16 @@ Color schemes save to and load from `.json` files. The window stays open while y
 **Replace Configuration** (Routing panel) swaps wrongly built branches for a correct one, wherever they are:
 1. **Pick the wrong branches:** preselect or window-select one or more of them, on any header sections. Pick their pipes, fittings and valves, and their olets too if those should be replaced as well. Each branch's header is found automatically: it's the outside connection to the piping with the biggest connectors, or the pipe the olet sits on.
 2. **Pick the correct branch:** select its elements (with its olet, if it has one), or its assembly. It can be loose or already on a header.
-3. **Matching by route, not by parts:** a branch's route is its straight legs from the header to its far end. For each leg, the route records the direction it runs (relative to the way the branch leaves its header, keeping up as up) and its pipe size.
-   - **Same route:** branches match when their legs turn the same way at the same sizes.
-   - **Allowed to differ:** valves, olets, unions and leg lengths can all differ, since those are what's wrong with the bad branches.
-   - **Where matches are found:** every tee side outlet and olet outlet of the right size and system type in the model is checked, on any header section, size, direction or system name.
-   - **Report:** the tool says how many outlets it checked and why the rest didn't match (different number of legs, turns differently, different pipe size).
-4. **Review in the model:** every branch to be replaced is selected and zoomed to, inside a live Revit pick. You can pan, zoom and orbit. Shift+click a branch to drop it, Ctrl+click elements of another branch to add it, then Finish.
-5. **Numbering (optional):** pick a parameter and step either its last number (`01 → 02`, `09 → 10`) or its last letter (`DETAIL A → DETAIL B`, `Z → AA`) for each placement. Placements are numbered along the direction they spread out most, lowest coordinate first.
-6. **Replace:** each old branch is deleted, and the correct one is copied onto that branch's header connection, turned (about vertical) so its legs run the same way.
+3. **Match options:** before searching, choose how alike a branch must be. Your choices are remembered for the session.
+   - **Leg length:** each leg's length must be within a tolerance of the picked branch's (default ±1"). Or tick **Any length**, and each match is stretched to fit.
+   - **Direction:** legs must run the same compass directions as the picked branch's (default). Or tick **Also branches facing other ways**, for the other side of a header or another header direction.
+4. **Matching by route, not by parts:** a branch's route is its straight legs from the header to its far end: direction, pipe size and length. Branches match when they have the same number of legs and sizes and pass the options above.
+   - **Allowed to differ:** valves, olets and unions never have to match, since those are what's wrong with the bad branches. Up always stays up.
+   - **Where matches are found:** every tee side outlet and olet outlet of the right size and system type in the model is checked.
+   - **Report:** the tool says how many were checked and why the rest didn't match (different number of legs, run in other directions, different leg lengths, pipe size).
+5. **Review in the model:** every branch to be replaced is selected and zoomed to, inside a live Revit pick. You can pan, zoom and orbit. Shift+click a branch to drop it, Ctrl+click elements of another branch to add it, then Finish.
+6. **Numbering (optional):** pick a parameter and step either its last number (`01 → 02`, `09 → 10`) or its last letter (`DETAIL A → DETAIL B`, `Z → AA`) for each placement. Placements are numbered along the direction they spread out most, lowest coordinate first.
+7. **Replace:** each old branch is deleted, and the correct one is copied onto that branch's header connection, turned (about vertical) so its legs run the same way.
    - **Stretch to fit:** each leg is then stretched or shortened to the old branch's length for that leg. Lengths are measured between the corners where the centrelines meet, so elbow sizes don't matter. The longest pipe in the leg takes up the difference and everything beyond it moves with it, so valves keep their distance from the header and the far end lands exactly where the old branch ended.
    - **Reconnect:** the branch is then reconnected to the header and to everything the old branch was connected to.
    - **With olets:** a new olet of the correct type is made on the same header pipe at the same spot.

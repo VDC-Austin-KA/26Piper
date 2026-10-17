@@ -49,8 +49,10 @@ public sealed class ReplaceConfigurationCommand : IExternalCommand
             if (good.Elements.Count == 0) return Fail("The correct selection has no piping in it.");
             if (badElements.Any(b => goodIds.Contains(b.Id))) return Fail("The correct branch overlaps an incorrect one.");
 
-            // 3. Every branch with the same route (legs turning the same way at the same sizes), on any header.
-            var (matches, report) = service.FindMatches(picked, goodIds);
+            // 3. Every branch with the same route (legs, sizes and, by the chosen rules, directions and lengths), on any header.
+            var options = new MatchOptionsViewModel($"Picked {picked.Count} branch(es) to fix. Find the others like them:");
+            if (!WindowHelper.ShowModal(new MatchOptionsWindow(options), commandData.Application)) return Result.Cancelled;
+            var (matches, report) = service.FindMatches(picked, goodIds, options.ToRules());
             var targets = new List<Target>();
             var misfits = new List<string>();
             void Add(Branch b)
