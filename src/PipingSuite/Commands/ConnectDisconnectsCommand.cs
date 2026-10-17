@@ -13,8 +13,8 @@ using PipingSuite.UI.Views;
 namespace PipingSuite.Commands;
 
 /// <summary>
-/// Lists every open end in the picked piping system(s) and what it touches, and connects the ones that
-/// should be joined. The window is modal, so its buttons run inside this command's API context.
+/// Lists the selection's open ends that touch something they aren't connected to, and connects the ones
+/// that should be joined. The window is modal, so its buttons run inside this command's API context.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 public sealed class ConnectDisconnectsCommand : IExternalCommand
@@ -29,15 +29,15 @@ public sealed class ConnectDisconnectsCommand : IExternalCommand
             var picked = uiDoc.Selection.GetElementIds().Select(doc.GetElement)
                 .Where(e => PipingElements.IsPiping(e) || e is Autodesk.Revit.DB.Plumbing.PipingSystem).ToList();
             if (picked.Count == 0)
-                picked = [doc.GetElement(uiDoc.Selection.PickObject(ObjectType.Element, new PipingSelectionFilter(),
-                    "Pick any pipe or fitting in the system to check (or preselect several systems' pipes)"))];
+                picked = uiDoc.Selection.PickObjects(ObjectType.Element, new PipingSelectionFilter(),
+                        "Select the piping to check for disconnects (window select works), then Finish")
+                    .Select(doc.GetElement).ToList();
 
             var service = new DisconnectService(doc);
-            var scope = service.Scope(picked);
-            var systems = scope.Select(e => e.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM)?.AsString())
-                .OfType<string>().Distinct().ToList();
+            var scope = DisconnectService.Scope(picked);
+            if (scope.Count == 0) return Result.Cancelled;
             var vm = new DisconnectsViewModel(
-                $"{scope.Count} element(s) in {(systems.Count == 0 ? "the selection" : string.Join(", ", systems.Take(4)) + (systems.Count > 4 ? " …" : string.Empty))}",
+                $"{scope.Count} selected element(s): their open ends that touch something they aren't connected to",
                 new Host(service, scope, uiDoc));
             WindowHelper.ShowModal(new DisconnectsWindow(vm), commandData.Application);
             return Result.Succeeded;
@@ -57,8 +57,8 @@ public sealed class ConnectDisconnectsCommand : IExternalCommand
     {
         public IReadOnlyList<Disconnect> Scan(double toleranceFeet, bool sameSystemType)
         {
-            // Elements replaced by an earlier fix (re-attached olets) drop out; the system may also have grown.
-            scope = service.Scope(scope.Where(e => e.IsValidObject).ToList());
+            // Elements replaced by an earlier fix (re-attached olets) drop out.
+            scope = scope.Where(e => e.IsValidObject).ToList();
             return service.Find(scope, toleranceFeet, sameSystemType);
         }
 

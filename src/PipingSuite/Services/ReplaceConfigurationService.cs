@@ -2,10 +2,28 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Mechanical;
 using Autodesk.Revit.DB.Plumbing;
 using PipingSuite.Core;
 
 namespace PipingSuite.Services;
+
+/// <summary>One in-line element on a branch's run, entered at <paramref name="Entry"/> and left at <paramref name="Exit"/>.</summary>
+public sealed record Hop(Element Element, XYZ Entry, XYZ Exit, XYZ EntryFacing, XYZ ExitFacing, double Radius)
+{
+    /// <summary>Goes straight through (pipe, valve, flange, reducer) rather than turning (elbow).</summary>
+    public bool Straight => EntryFacing.DotProduct(ExitFacing) < -0.999 && Entry.DistanceTo(Exit) > 1e-6;
+}
+
+/// <summary>A straight leg of a route: its direction, size and length between the corners either side of it.</summary>
+public sealed record Leg(XYZ Dir, double Radius, double Length, int First, int Last);
+
+/// <summary>
+/// The run from a branch's header connection to its far end: in-line elements in order and the straight
+/// legs they make. Two branches are "the same configuration" when their legs turn the same way at the
+/// same sizes, whatever valves, olets or lengths they have.
+/// </summary>
+public sealed record Route(IReadOnlyList<Hop> Chain, IReadOnlyList<Leg> Legs, string? TerminalKey);
 
 /// <summary>
 /// A branch off a header: its elements and the connector where it meets the header ("root"), which
@@ -14,7 +32,7 @@ namespace PipingSuite.Services;
 /// and <paramref name="Header"/> is the pipe the olet sits on: the olet is replaced too, re-made on that pipe.
 /// </summary>
 public sealed record Branch(IReadOnlyList<Element> Elements, ElementId RootId, XYZ Origin, XYZ Out, double RootRadius,
-    Element? Header, string? SystemName, ElementId? OletId = null)
+    Element? Header, string? SystemName, Route Route, ElementId? OletId = null)
 {
     public IEnumerable<ElementId> Ids => Elements.Select(e => e.Id);
 }
@@ -31,27 +49,33 @@ public sealed record Numbering(string Parameter, IncrementMode Mode, string Star
 public sealed record ReplaceResult(int Replaced, IReadOnlyList<ElementId> NewIds, IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// Replace Configuration. A branch matches a picked one when the two can be walked side by side from
-/// their header connections, element for element: same type and sizes, every connector at the same spot
-/// and facing the same way once the picked branch is moved onto the candidate's header connection and
-/// turned to face out of it (keeping up as up, so the other side of a header or another header direction
-/// matches, but a branch that drops never matches one that rises). Only the picked branch's elements are compared, so whatever a branch runs on into
-/// (equipment, a rack manifold) doesn't matter, and the header can be any section, size or system.
-/// Each match is then swapped for the correct branch, placed the way it best fits the picked one.
+/// Replace Configuration. Branches are compared by route: the straight legs from the header connection to
+/// the far end, each leg's direction (relative to the way the branch leaves its header, keeping up as up)
+/// and pipe size. Components and lengths are free to differ, since those are what is wrong with the bad
+/// branches. The correct branch is placed on each match's header and every leg is stretched or shortened
+/// to that branch's own leg lengths, so it ends exactly where the old one did and reconnects there.
 /// </summary>
 public sealed class ReplaceConfigurationService(Document doc)
 {
-    private const double Tol = 0.04;     // ft (~1/2"): connector positions that count as the same
-    private const double FitTol = 0.1;   // ft: looser, for fitting the correct branch over the old one
-    private const double SameDir = 0.99; // cosine: connector directions that count as the same
+    private const double Tol = 0.04;     // ft (~1/2"): connections that count as the same spot
+    private const double SameDir = 0.99; // cosine: directions that count as the same
+    private const double MinPipe = 0.05; // ft: shortest a stretched pipe may become
 
     /// <summary>Turns about the root axis to try, nearest "keeps up as up" first (0, ±15°, ±30° … 180°).</summary>
     private static readonly double[] Turns =
         [0, .. Enumerable.Range(1, 11).SelectMany(k => new[] { k, -k }).Select(k => k * Math.PI / 12), Math.PI];
 
+    private static readonly HashSet<PartType> HeaderParts =
+    [
+        PartType.Tee, PartType.Cross, PartType.TapPerpendicular, PartType.TapAdjustable,
+        PartType.SpudPerpendicular, PartType.SpudAdjustable, PartType.LateralTee, PartType.LateralCross,
+    ];
+
+    // ---------------------------------------------------------------- picked branches
+
     /// <summary>
     /// Splits a selection into its separate branches (connected pieces), each with its header found
-    /// automatically. Pieces connected to nothing are skipped.
+    /// automatically and its route read from the header out to the end of the selection.
     /// </summary>
     public List<Branch> Split(IReadOnlyList<Element> elements)
     {
@@ -63,138 +87,273 @@ public sealed class ReplaceConfigurationService(Document doc)
 
         return byId.Keys.GroupBy(uf.Find)
             .Select(g => g.Select(id => byId[id]).ToList())
-            .Select(AutoDescribe).OfType<Branch>()
+            .Select(Describe).OfType<Branch>()
             .ToList();
     }
 
     /// <summary>
-    /// How to lay the correct branch over <paramref name="bad"/>: tries each of its ends of the bad root's
-    /// size as the header end, at each upright turn, and keeps the pose where most of its connectors land on
-    /// the bad branch's (ties: an end already on a header, then the smallest turn). Null if it has no such end.
+    /// A picked branch. Its header is its outside connection to piping with the biggest connectors (the
+    /// header tee/olet); with the olet selected too, the branch starts at the olet's outlet.
     /// </summary>
-    public Transform? Fit(Source good, Branch bad)
+    private static Branch? Describe(IReadOnlyList<Element> elements)
     {
-        // Olets are left out of the fit: theirs sit higher or lower on a different header size.
-        var olet = RootOlet(good.Elements);
-        var body = good.Elements.Where(e => e.Id != olet?.Id).ToList();
-        var goodIds = body.Select(e => e.Id).ToHashSet();
-        var goodConnectors = body.SelectMany(PhysicalConnectors).ToList();
-        var badPoints = bad.Elements.Where(e => e.Id != bad.OletId).SelectMany(PhysicalConnectors).Select(c => c.Origin).ToList();
-        var roots = olet is not null && Outlet(olet, body) is { } fed
-            ? [fed] // with its olet, the correct branch's header end is plain: what the olet feeds
-            : goodConnectors.Where(c => Math.Abs(Radius(c) - bad.RootRadius) < 1e-4).ToList();
-        if (roots.Count == 0) return null;
+        var link = ExternalLinks(elements)
+            .OrderByDescending(l => PipingElements.IsPiping(l.Outside.Owner))
+            .ThenByDescending(l => MaxRadius(l.Outside.Owner))
+            .FirstOrDefault();
+        if (link.Inside is null) return null;
 
-        var badFrame = Frame(bad.Origin, bad.Out, 0);
-        var poses = roots.SelectMany(root => Turns.Select(turn => (Root: root,
-            Pose: badFrame.Multiply(Frame(root.Origin, root.CoordinateSystem.BasisZ.Negate(), turn).Inverse)))).ToList();
-        // Upright poses only, when there are any: the copy then only turns about vertical.
-        if (poses.Any(p => p.Pose.OfVector(XYZ.BasisZ).Z > SameDir)) poses = poses.Where(p => p.Pose.OfVector(XYZ.BasisZ).Z > SameDir).ToList();
-
-        (int Score, Transform Pose)? best = null;
-        foreach (var (root, pose) in poses)
+        var ids = elements.Select(e => e.Id).ToHashSet();
+        var root = link.Inside;
+        Element header = link.Outside.Owner;
+        ElementId? olet = null;
+        if (OletService.IsTap(root.Owner) && Outlet(root.Owner, elements) is { } fed)
         {
-            bool onHeader = root.IsConnected && Refs(root).Any(r => !goodIds.Contains(r.Owner.Id));
-            int score = goodConnectors.Count(c => badPoints.Any(p => pose.OfPoint(c.Origin).DistanceTo(p) < FitTol)) * 2
-                        + (onHeader ? 1 : 0);
-            if (best is null || score > best.Value.Score) best = (score, pose);
+            olet = root.Owner.Id;
+            root = fed;
         }
-        return best!.Value.Pose;
+        var (chain, next) = Walk(root, o => !ids.Contains(o.Id));
+        if (chain.Count == 0) return null;
+        var route = new Route(chain, Legs(chain), next is not null && PipingElements.IsPiping(next) ? Key(next) : null);
+        return new Branch(elements, root.Owner.Id, root.Origin, root.CoordinateSystem.BasisZ.Negate(), Radius(root),
+            header, SystemName(root.Owner), route, olet);
     }
 
+    // ---------------------------------------------------------------- matching
+
     /// <summary>
-    /// Every other branch laid out like one of <paramref name="picked"/>, with the transform taking the
-    /// picked branch onto it. Candidates start at elements like the picked root (same type, sizes and
-    /// piping system type) whose same-size connector is connected to something: their header.
+    /// Every other branch with the same route as one of <paramref name="picked"/>, on any header: it starts
+    /// at a header fitting's branch outlet (a tee's side, an olet's outlet) of the same size and system type,
+    /// and its legs turn the same way at the same sizes. Also returns a one-line account of what was checked.
     /// </summary>
-    public List<(Branch Match, Transform FromPicked, int Picked)> FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude)
+    public (List<Branch> Matches, string Report) FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude)
     {
-        var matches = new List<(Branch, Transform, int)>();
+        var matches = new List<Branch>();
         var taken = new HashSet<ElementId>(exclude.Concat(picked.SelectMany(b => b.Ids)));
+        var reasons = new Dictionary<string, int>();
+        int starts = 0;
 
-        for (int p = 0; p < picked.Count; p++)
+        var fittings = new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_PipeFitting)
+            .WhereElementIsNotElementType().OfType<FamilyInstance>()
+            .Where(f => f.MEPModel is MechanicalFitting m && HeaderParts.Contains(m.PartType)).ToList();
+
+        foreach (var reference in picked)
         {
-            var reference = picked[p];
-            var root = doc.GetElement(reference.RootId);
-            var key = Key(root);
-            var systemType = SystemType(root);
+            var systemType = SystemType(doc.GetElement(reference.RootId));
             var frame = Frame(reference.Origin, reference.Out, 0);
-            var sameType = new ElementParameterFilter(ParameterFilterRuleFactory.CreateEqualsRule(
-                new ElementId(BuiltInParameter.ELEM_TYPE_PARAM), root.GetTypeId()));
-
-            foreach (var candidate in new FilteredElementCollector(doc).WhereElementIsNotElementType().WherePasses(sameType))
+            foreach (var fitting in fittings)
             {
-                if (taken.Contains(candidate.Id) || Key(candidate) != key || SystemType(candidate) != systemType) continue;
+                bool tap = OletService.IsTap(fitting);
+                if (reference.OletId is not null && !tap) continue; // replacing olets: only branches off olets
+                if (taken.Contains(fitting.Id)) continue;
 
-                var found = PhysicalConnectors(candidate)
-                    .Where(c => c.IsConnected && Math.Abs(Radius(c) - reference.RootRadius) < 1e-4)
-                    .Where(c => reference.OletId is null || Refs(c).Any(r => OletService.IsTap(r.Owner) && !taken.Contains(r.Owner.Id)))
-                    .SelectMany(c => Turns.Select(turn => (Root: c, Move: Frame(c.Origin, c.CoordinateSystem.BasisZ.Negate(), turn).Multiply(frame.Inverse))))
-                    .Where(h => h.Move.OfVector(XYZ.BasisZ).Z > SameDir) // up stays up: a branch that drops is not one that rises
-                    .Select(h => (h.Root, h.Move, Map: Correspond(reference, root, candidate, h.Move, taken)))
-                    .FirstOrDefault(h => h.Map is not null && !Refs(h.Root).Any(r => h.Map.Values.Any(e => e.Id == r.Owner.Id)));
-                if (found.Map is null) continue;
-
-                var elements = found.Map.Values.ToList();
-                var header = Refs(found.Root).Select(r => r.Owner).FirstOrDefault();
-                ElementId? oletId = null;
-                if (reference.OletId is not null && header is not null)
+                foreach (var outlet in BranchOutlets(fitting, reference.RootRadius))
                 {
-                    elements.Add(header); // the olet goes with the branch; its header is the pipe it sits on
-                    oletId = header.Id;
-                    header = OletService.AsOlet(header)?.Main;
-                }
-                matches.Add((new Branch(elements, candidate.Id, found.Root.Origin, found.Root.CoordinateSystem.BasisZ.Negate(),
-                    reference.RootRadius, header, SystemName(candidate), oletId), found.Move, p));
-                taken.UnionWith(elements.Select(e => e.Id));
-            }
-        }
-        return matches;
-    }
+                    var root = Refs(outlet).FirstOrDefault(r => r.Owner.Id != fitting.Id);
+                    if (root is null || taken.Contains(root.Owner.Id)) continue;
+                    var st = SystemType(root.Owner);
+                    if (systemType is not null && st is not null && st != systemType) continue;
+                    starts++;
 
-    /// <summary>
-    /// Walks the picked branch and a candidate side by side from their roots. Every connector of each picked
-    /// element must have a twin on the candidate element at <paramref name="move"/>'s image of it, facing the
-    /// same way, and neighbours inside the picked branch must have twins of the same kind there. Returns
-    /// picked element id → candidate element, or null at the first difference.
-    /// </summary>
-    private static Dictionary<ElementId, Element>? Correspond(Branch reference, Element root, Element candidate, Transform move, HashSet<ElementId> taken)
-    {
-        var inside = reference.Ids.Where(id => id != reference.OletId).ToHashSet();
-        var map = new Dictionary<ElementId, Element> { [root.Id] = candidate };
-        var queue = new Queue<(Element B, Element C)>([(root, candidate)]);
-        while (queue.TryDequeue(out var pair))
-        {
-            var (b, c) = pair;
-            var mine = PhysicalConnectors(b).ToList();
-            var theirs = PhysicalConnectors(c).ToList();
-            if (mine.Count != theirs.Count) return null;
-
-            foreach (var cb in mine)
-            {
-                var at = move.OfPoint(cb.Origin);
-                var facing = move.OfVector(cb.CoordinateSystem.BasisZ);
-                var cc = theirs.FirstOrDefault(x => x.Origin.DistanceTo(at) < Tol && x.CoordinateSystem.BasisZ.DotProduct(facing) > SameDir);
-                if (cc is null) return null;
-                if (!cb.IsConnected) continue;
-
-                foreach (var nb in Refs(cb).Select(r => r.Owner).Where(o => o.Id != b.Id && inside.Contains(o.Id)))
-                {
-                    var key = Key(nb);
-                    var nc = cc.IsConnected ? Refs(cc).Select(r => r.Owner).FirstOrDefault(o => o.Id != c.Id && Key(o) == key) : null;
-                    if (nc is null || taken.Contains(nc.Id)) return null;
-                    if (map.TryGetValue(nb.Id, out var seen))
+                    var (chain, _) = Walk(root, o => taken.Contains(o.Id) || (reference.Route.TerminalKey is { } k && Key(o) == k));
+                    if (chain.Count == 0) continue;
+                    var route = new Route(chain, Legs(chain), reference.Route.TerminalKey);
+                    var why = BestTurn(reference.Route, frame, route, root.Origin, root.CoordinateSystem.BasisZ.Negate(), out _);
+                    if (why is not null)
                     {
-                        if (seen.Id != nc.Id) return null;
+                        reasons[why] = reasons.GetValueOrDefault(why) + 1;
                         continue;
                     }
-                    map[nb.Id] = nc;
-                    queue.Enqueue((nb, nc));
+
+                    var elements = chain.Select(h => h.Element).ToList();
+                    elements.AddRange(Hanging(elements, taken));
+                    Element header = fitting;
+                    if (tap && reference.OletId is not null)
+                    {
+                        elements.Add(fitting);
+                        header = OletService.AsOlet(fitting)?.Main ?? (Element)fitting;
+                    }
+                    matches.Add(new Branch(elements, root.Owner.Id, root.Origin, root.CoordinateSystem.BasisZ.Negate(),
+                        reference.RootRadius, header, SystemName(root.Owner), route, tap && reference.OletId is not null ? fitting.Id : null));
+                    taken.UnionWith(elements.Select(e => e.Id));
                 }
             }
         }
-        return map.Count == inside.Count ? map : null;
+
+        var report = $"checked {starts} header outlet(s) of the same size and system type: {matches.Count} match" +
+                     string.Concat(reasons.OrderByDescending(r => r.Value).Select(r => $"; {r.Value} {r.Key}"));
+        return (matches, report);
     }
+
+    /// <summary>
+    /// The upright turn that lines route <paramref name="b"/> (root at <paramref name="origin"/>, leaving along
+    /// <paramref name="outward"/>) up with route <paramref name="a"/> in <paramref name="frameA"/>. Null when
+    /// one does; otherwise the reason the closest attempt failed.
+    /// </summary>
+    private static string? BestTurn(Route a, Transform frameA, Route b, XYZ origin, XYZ outward, out Transform frameB)
+    {
+        frameB = Transform.Identity;
+        if (a.Legs.Count != b.Legs.Count) return $"have {b.Legs.Count} leg(s), not {a.Legs.Count}";
+        string worst = "turn differently";
+        foreach (var turn in Turns)
+        {
+            var f = Frame(origin, outward, turn);
+            if (frameA.Multiply(f.Inverse).OfVector(XYZ.BasisZ).Z < SameDir) continue; // up stays up
+            var why = Compare(a, frameA, b, f);
+            if (why is null)
+            {
+                frameB = f;
+                return null;
+            }
+            if (why == "differ in pipe size") worst = why;
+        }
+        return worst;
+    }
+
+    private static string? Compare(Route a, Transform fa, Route b, Transform fb)
+    {
+        for (int k = 0; k < a.Legs.Count; k++)
+        {
+            if (fa.Inverse.OfVector(a.Legs[k].Dir).DotProduct(fb.Inverse.OfVector(b.Legs[k].Dir)) < SameDir) return "turn differently";
+            if (Math.Abs(a.Legs[k].Radius - b.Legs[k].Radius) > 1e-4) return "differ in pipe size";
+        }
+        return null;
+    }
+
+    /// <summary>Connectors a branch can leave a header fitting from: an olet's outlet, a tee's side (or any reduced outlet).</summary>
+    private static IEnumerable<Connector> BranchOutlets(FamilyInstance fitting, double radius)
+    {
+        var all = PhysicalConnectors(fitting).ToList();
+        double biggest = all.Select(Radius).DefaultIfEmpty(0).Max();
+        return all.Where(c => c.IsConnected && Math.Abs(Radius(c) - radius) < 1e-4)
+            .Where(c => OletService.IsTap(fitting)
+                ? !Refs(c).Any(r => r.ConnectorType == ConnectorType.Curve)                       // not the olet's seat
+                : biggest > Radius(c) + 1e-4                                                      // reducing outlet
+                  || !all.Any(o => o != c && o.CoordinateSystem.BasisZ.DotProduct(c.CoordinateSystem.BasisZ) < -0.999)); // not on the run
+    }
+
+    /// <summary>Things hanging off a branch's pipes (gauge/vent olets and what they carry): they go with it.</summary>
+    private static List<Element> Hanging(IReadOnlyList<Element> chain, HashSet<ElementId> taken)
+    {
+        var seen = chain.Select(e => e.Id).ToHashSet();
+        var found = new List<Element>();
+        var queue = new Queue<Element>(chain.Where(e => e is MEPCurve)
+            .SelectMany(e => PhysicalConnectors(e).Where(c => c.ConnectorType == ConnectorType.Curve).SelectMany(Refs))
+            .Select(r => r.Owner).Where(o => !seen.Contains(o.Id) && !taken.Contains(o.Id)));
+        while (queue.TryDequeue(out var e) && found.Count < 40)
+        {
+            if (!seen.Add(e.Id) || !PipingElements.IsPiping(e)) continue;
+            found.Add(e);
+            foreach (var n in PipingElements.GetConnectedElements(e).Where(n => !seen.Contains(n.Id) && !taken.Contains(n.Id)))
+                queue.Enqueue(n);
+        }
+        return found;
+    }
+
+    // ---------------------------------------------------------------- routes
+
+    /// <summary>
+    /// Follows a run from <paramref name="entry"/> through elements with two ends (pipes, elbows, valves,
+    /// flanges…), stopping at an open end, a split (tee), non-piping, or an element <paramref name="stop"/>
+    /// rejects. Returns the hops and the element it stopped at (if any).
+    /// </summary>
+    private static (List<Hop> Chain, Element? Next) Walk(Connector entry, Func<Element, bool> stop, int limit = 200)
+    {
+        var hops = new List<Hop>();
+        var at = entry;
+        while (hops.Count < limit)
+        {
+            var e = at.Owner;
+            var ends = Ends(e).ToList();
+            if (ends.Count != 2) return (hops, e);
+            var exit = ends.MaxBy(c => c.Origin.DistanceTo(at.Origin))!;
+            hops.Add(new Hop(e, at.Origin, exit.Origin, at.CoordinateSystem.BasisZ, exit.CoordinateSystem.BasisZ, Radius(at)));
+            var next = exit.IsConnected ? Refs(exit).FirstOrDefault(r => r.Owner.Id != e.Id) : null;
+            if (next is null) return (hops, null);
+            if (!PipingElements.IsPiping(next.Owner) || stop(next.Owner) || hops.Any(h => h.Element.Id == next.Owner.Id))
+                return (hops, next.Owner);
+            at = next;
+        }
+        return (hops, null);
+    }
+
+    /// <summary>
+    /// Straight legs of a run. Lengths are measured between the corners where neighbouring legs' centrelines
+    /// meet, so a long- or short-radius elbow at a corner doesn't change them.
+    /// </summary>
+    private static List<Leg> Legs(IReadOnlyList<Hop> chain)
+    {
+        var runs = new List<(XYZ Dir, XYZ Start, XYZ End, double Radius, int First, int Last)>();
+        bool open = false;
+        for (int i = 0; i < chain.Count; i++)
+        {
+            var h = chain[i];
+            if (!h.Straight)
+            {
+                open = false;
+                continue;
+            }
+            var dir = (h.Exit - h.Entry).Normalize();
+            if (open && runs[^1].Dir.DotProduct(dir) > 0.999) runs[^1] = runs[^1] with { End = h.Exit, Last = i };
+            else runs.Add((dir, h.Entry, h.Exit, h.Radius, i, i));
+            open = true;
+        }
+
+        var corners = runs.Zip(runs.Skip(1), (a, b) => Corner(a.Start, a.Dir, b.Start, b.Dir) ?? a.End).ToList();
+        return runs.Select((r, k) =>
+        {
+            var from = k == 0 ? r.Start : corners[k - 1];
+            var to = k == runs.Count - 1 ? r.End : corners[k];
+            return new Leg(r.Dir, r.Radius, (to - from).DotProduct(r.Dir), r.First, r.Last);
+        }).ToList();
+    }
+
+    /// <summary>Where two centrelines meet (midpoint of their closest points); null if they're parallel.</summary>
+    private static XYZ? Corner(XYZ p, XYZ u, XYZ q, XYZ v)
+    {
+        double b = u.DotProduct(v), denom = 1 - b * b;
+        if (denom < 1e-9) return null;
+        var w = p - q;
+        double d = u.DotProduct(w), e = v.DotProduct(w);
+        double s = (b * e - d) / denom, t = (e - b * d) / denom;
+        return (p + u * s + q + v * t) / 2;
+    }
+
+    // ---------------------------------------------------------------- fitting the correct branch
+
+    /// <summary>
+    /// How to lay the correct branch onto <paramref name="target"/>'s header connection: its header end is
+    /// what its olet feeds (or each end of the right size, one on a header first) and the turn is the upright
+    /// one where its legs run the same way as the target's. Null with the reason when its route doesn't fit.
+    /// </summary>
+    public (Transform? Pose, string? Why) Fit(Source good, Branch target)
+    {
+        var olet = RootOlet(good.Elements);
+        var body = good.Elements.Where(e => e.Id != olet?.Id).ToList();
+        var ids = body.Select(e => e.Id).ToHashSet();
+        var roots = olet is not null && Outlet(olet, body) is { } fed
+            ? [fed]
+            : body.SelectMany(PhysicalConnectors)
+                .Where(c => c.ConnectorType == ConnectorType.End && Math.Abs(Radius(c) - target.RootRadius) < 1e-4)
+                .Where(c => !c.IsConnected || Refs(c).Any(r => !ids.Contains(r.Owner.Id)))
+                .OrderByDescending(c => c.IsConnected) // an end already on a header first
+                .ToList();
+        if (roots.Count == 0) return (null, "the correct branch has no end the size of this branch's header connection");
+
+        var targetFrame = Frame(target.Origin, target.Out, 0);
+        string why = "the correct branch's route is different";
+        foreach (var root in roots)
+        {
+            var (chain, _) = Walk(root, o => !ids.Contains(o.Id));
+            var route = new Route(chain, Legs(chain), null);
+            var miss = BestTurn(target.Route, targetFrame, route, root.Origin, root.CoordinateSystem.BasisZ.Negate(), out var f);
+            if (miss is null) return (targetFrame.Multiply(f.Inverse), null);
+            why = $"the correct branch's legs {miss} from this one's";
+        }
+        return (null, why);
+    }
+
+    // ---------------------------------------------------------------- replacing
 
     /// <summary>
     /// Replaces each target with a copy of <paramref name="source"/>, one transaction per placement inside a
@@ -247,9 +406,9 @@ public sealed class ReplaceConfigurationService(Document doc)
     }
 
     /// <summary>
-    /// Deletes the old branch, copies the source into its pose, and remakes each outside connection it can.
-    /// With olets, the old one goes with its branch and a new one of the correct branch's olet type (else the
-    /// old type) is made on the same header pipe at the same spot; the new branch is nudged onto its outlet.
+    /// Deletes the old branch, copies the source into its pose, stretches each leg to the old branch's
+    /// length, then remakes the header connection (re-making the olet when it was replaced too) and every
+    /// other outside connection the old branch had.
     /// </summary>
     private List<Element> Place(Target target, Source source, List<string> warnings, string label)
     {
@@ -287,19 +446,20 @@ public sealed class ReplaceConfigurationService(Document doc)
             all.Remove(copiedOlet);
         }
 
+        StretchToFit(all, old, warnings, label);
+
         if (olet is not null)
         {
             var outlet = OletService.AsOlet(olet)?.Branch ?? throw new InvalidOperationException("The new olet has no outlet.");
-            var start = all.SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(old.Origin))
-                        ?? throw new InvalidOperationException("The correct branch has no open end to put on the olet.");
+            var start = OpenNear(all, old.Origin) ?? throw new InvalidOperationException("The correct branch has no open end to put on the olet.");
             var nudge = outlet.Origin - start.Origin; // a different olet type or header size moves the outlet a little
             if (nudge.GetLength() > Tol * 6)
                 warnings.Add($"{label}: the new olet's outlet is {Format(nudge)} from the branch; check it.");
             if (nudge.GetLength() > 1e-6)
             {
-                ElementTransformUtils.MoveElements(doc, copied, nudge);
+                ElementTransformUtils.MoveElements(doc, copied, nudge); // top-level copies only: an assembly carries its members
                 doc.Regenerate();
-                start = all.SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(outlet.Origin))!;
+                start = OpenNear(all, outlet.Origin)!;
             }
             start.ConnectTo(outlet);
             all.Add(olet);
@@ -310,7 +470,7 @@ public sealed class ReplaceConfigurationService(Document doc)
             var outside = doc.GetElement(ownerId) is { } owner
                 ? PhysicalConnectors(owner).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(at))
                 : null;
-            var inside = all.SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(at));
+            var inside = OpenNear(all, at);
             if (outside is null || inside is null || inside.Origin.DistanceTo(at) > Tol || outside.Origin.DistanceTo(at) > Tol)
             {
                 warnings.Add($"{label}: the connection at {Format(at)} was left open (the new branch has no open end there).");
@@ -331,24 +491,80 @@ public sealed class ReplaceConfigurationService(Document doc)
     }
 
     /// <summary>
-    /// A branch whose header is its outside connection to piping with the biggest connectors (the header
-    /// tee/olet), so equipment, valves or a smaller pipe at the far end are never taken for the header.
+    /// Makes each leg of the placed copy as long as the old branch's: the longest pipe in the leg changes
+    /// length and everything beyond it moves with it, so valves keep their distance from the header and the
+    /// far end lands where the old branch ended.
     /// </summary>
-    private static Branch? AutoDescribe(IReadOnlyList<Element> elements)
+    private void StretchToFit(List<Element> placed, Branch old, List<string> warnings, string label)
     {
-        var link = ExternalLinks(elements)
-            .OrderByDescending(l => PipingElements.IsPiping(l.Outside.Owner))
-            .ThenByDescending(l => MaxRadius(l.Outside.Owner))
-            .FirstOrDefault();
-        if (link.Inside is null) return null;
+        var ids = placed.Select(e => e.Id).ToHashSet();
+        for (int k = 0; k < old.Route.Legs.Count; k++)
+        {
+            var root = OpenNear(placed, old.Origin);
+            if (root is null) return;
+            var (chain, _) = Walk(root, e => !ids.Contains(e.Id));
+            var legs = Legs(chain);
+            if (legs.Count != old.Route.Legs.Count)
+            {
+                warnings.Add($"{label}: the copy has {legs.Count} leg(s), the old branch {old.Route.Legs.Count}; lengths were left as built.");
+                return;
+            }
+            var leg = legs[k];
+            double change = old.Route.Legs[k].Length - leg.Length;
+            if (Math.Abs(change) < 1e-4) continue;
 
-        var owner = link.Inside.Owner;
-        if (OletService.IsTap(owner) && Outlet(owner, elements) is { } fed) // the olet came with the branch: measure from its outlet
-            return new Branch(elements, fed.Owner.Id, fed.Origin, fed.CoordinateSystem.BasisZ.Negate(), Radius(fed),
-                link.Outside.Owner, SystemName(fed.Owner), owner.Id);
-        return new Branch(elements, owner.Id, link.Inside.Origin, link.Inside.CoordinateSystem.BasisZ.Negate(),
-            Radius(link.Inside), link.Outside.Owner, SystemName(owner));
+            int at = Enumerable.Range(leg.First, leg.Last - leg.First + 1)
+                .Where(i => chain[i].Element is MEPCurve { Location: LocationCurve { Curve: Line } })
+                .OrderByDescending(i => chain[i].Entry.DistanceTo(chain[i].Exit)).DefaultIfEmpty(-1).First();
+            if (at < 0)
+            {
+                warnings.Add($"{label}: leg {k + 1} has no straight pipe to stretch by {Format(leg.Dir * change)}.");
+                continue;
+            }
+            var pipe = (MEPCurve)chain[at].Element;
+            var (entry, exit) = (chain[at].Entry, chain[at].Exit);
+            if (entry.DistanceTo(exit) + change < MinPipe)
+                throw new InvalidOperationException($"leg {k + 1} would need a pipe shorter than nothing ({Format(leg.Dir * change)}).");
+
+            // Everything past this pipe: the rest of the run and whatever hangs off it.
+            var beyond = Downstream(chain, at, placed);
+            var exitConnector = Ends(pipe).MinBy(c => c.Origin.DistanceTo(exit))!;
+            var neighbour = exitConnector.IsConnected ? Refs(exitConnector).FirstOrDefault(r => r.Owner.Id != pipe.Id) : null;
+            if (neighbour is not null) exitConnector.DisconnectFrom(neighbour);
+            var shift = leg.Dir * change;
+            if (beyond.Count > 0) ElementTransformUtils.MoveElements(doc, beyond, shift);
+            ((LocationCurve)pipe.Location).Curve = Line.CreateBound(entry, exit + shift);
+            doc.Regenerate();
+            if (neighbour is not null)
+            {
+                var mine = Ends(pipe).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(exit + shift));
+                var theirs = doc.GetElement(neighbour.Owner.Id) is { } n
+                    ? Ends(n).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(exit + shift))
+                    : null;
+                if (mine is not null && theirs is not null) mine.ConnectTo(theirs);
+            }
+        }
     }
+
+    /// <summary>Ids of the run past hop <paramref name="at"/>, plus elements hanging off those (gauge olets…), not off earlier hops.</summary>
+    private static List<ElementId> Downstream(IReadOnlyList<Hop> chain, int at, IReadOnlyList<Element> placed)
+    {
+        var position = chain.Select((h, i) => (h.Element.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        var placedIds = placed.Select(e => e.Id).ToHashSet();
+        var result = chain.Skip(at + 1).Select(h => h.Element.Id).ToList();
+
+        // Hanging elements belong to the hop they are (eventually) attached to.
+        var owner = new Dictionary<ElementId, int>();
+        var queue = new Queue<(Element E, int Hop)>(chain.Select((h, i) => (h.Element, i)));
+        while (queue.TryDequeue(out var item))
+            foreach (var n in PipingElements.GetConnectedElements(item.E))
+                if (placedIds.Contains(n.Id) && !position.ContainsKey(n.Id) && owner.TryAdd(n.Id, item.Hop))
+                    queue.Enqueue((n, item.Hop));
+        result.AddRange(owner.Where(o => o.Value > at).Select(o => o.Key));
+        return result;
+    }
+
+    // ---------------------------------------------------------------- helpers
 
     /// <summary>The connector an olet's outlet feeds, on one of <paramref name="elements"/>.</summary>
     private static Connector? Outlet(Element olet, IReadOnlyCollection<Element> elements)
@@ -444,12 +660,17 @@ public sealed class ReplaceConfigurationService(Document doc)
             .ToList();
     }
 
+    private Connector? OpenNear(IEnumerable<Element> elements, XYZ at) =>
+        elements.Where(e => e.IsValidObject).SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(at));
+
     private static IEnumerable<Connector> Refs(Connector c) =>
         c.AllRefs.Cast<Connector>().Where(r => r.ConnectorType != ConnectorType.Logical && r.Owner is not null and not MEPSystem);
 
     private static IEnumerable<Connector> PhysicalConnectors(Element e) =>
         PipingElements.GetConnectorManager(e)?.Connectors.Cast<Connector>()
             .Where(c => c.ConnectorType != ConnectorType.Logical && c.Domain == Domain.DomainPiping) ?? [];
+
+    private static IEnumerable<Connector> Ends(Element e) => PhysicalConnectors(e).Where(c => c.ConnectorType == ConnectorType.End);
 
     private static double Radius(Connector c) => c.Shape == ConnectorProfileType.Round ? c.Radius : 0;
 

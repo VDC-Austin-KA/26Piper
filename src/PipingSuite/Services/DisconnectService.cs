@@ -21,8 +21,6 @@ public enum DisconnectKind
     Olet,
     /// <summary>Touching, but needs judgement (fittings at an angle, size change on a fitting): shown, not fixed.</summary>
     Review,
-    /// <summary>An open end with nothing near it: shown so it can be found, not fixed.</summary>
-    Open,
 }
 
 /// <param name="Owner">Element with the open end.</param>
@@ -30,13 +28,13 @@ public enum DisconnectKind
 /// <param name="At">Where the open end is.</param>
 public sealed record Disconnect(DisconnectKind Kind, ElementId Owner, ElementId? Other, XYZ At, double Gap, string What)
 {
-    public bool CanFix => Kind is not (DisconnectKind.Review or DisconnectKind.Open);
+    public bool CanFix => Kind != DisconnectKind.Review;
 }
 
 /// <summary>
-/// Connect Disconnects: finds open connectors in a piping system that touch something they should be
-/// joined to, and joins them. Loose pieces are usually in a different system (Revit splits systems at a
-/// break), so the search looks at everything around each open end, not just the picked system.
+/// Connect Disconnects: finds open connectors on the selected elements that touch something they should be
+/// joined to, and joins them. Only the selection's open ends are checked (fast on any model); each one looks
+/// at what is right there, selected or not, so a selected branch can be joined to an unselected header.
 /// </summary>
 public sealed class DisconnectService(Document doc)
 {
@@ -50,24 +48,12 @@ public sealed class DisconnectService(Document doc)
     private const double Facing = -0.98; // cosine: ends pointing at each other
     private const double Square = 0.2;   // |cosine|: a branch end roughly square to the pipe it lands on
 
-    /// <summary>The picked elements plus everything in their piping systems (a picked system counts as all of it).</summary>
-    public List<Element> Scope(IEnumerable<Element> picked)
-    {
-        var found = new Dictionary<ElementId, Element>();
-        foreach (var e in picked)
-        {
-            var systems = e is PipingSystem ps
-                ? [ps]
-                : PhysicalConnectors(e).Select(c => c.MEPSystem).OfType<PipingSystem>();
-            if (e is not PipingSystem) found.TryAdd(e.Id, e);
-            foreach (var system in systems.DistinctBy(s => s.Id))
-            foreach (Element member in system.PipingNetwork)
-                found.TryAdd(member.Id, member);
-        }
-        return found.Values.Where(e => PhysicalConnectors(e).Any()).ToList();
-    }
+    /// <summary>The selected elements that have piping connectors (a selected system counts as its elements).</summary>
+    public static List<Element> Scope(IEnumerable<Element> picked) =>
+        picked.SelectMany(e => e is PipingSystem ps ? ps.PipingNetwork.Cast<Element>() : [e])
+            .DistinctBy(e => e.Id).Where(e => PhysicalConnectors(e).Any()).ToList();
 
-    /// <summary>Every open end in <paramref name="scope"/>, with what (if anything) it should be joined to.</summary>
+    /// <summary>Open ends in <paramref name="scope"/> that touch something they should be joined to (ends touching nothing are left out).</summary>
     /// <param name="tolerance">How far apart (ft) still counts as touching.</param>
     /// <param name="sameSystemType">Only join ends of the same system classification (or unclassified fittings).</param>
     public List<Disconnect> Find(IReadOnlyList<Element> scope, double tolerance, bool sameSystemType)
@@ -105,11 +91,7 @@ public sealed class DisconnectService(Document doc)
                     olet ? $"{Name(e)} sits on {Name(host)} without being attached"
                     : e is Pipe ? $"{Name(e)} ends on the side of {Name(host)}"
                     : $"{Name(e)} ends on the side of {Name(host)} (needs a tee or olet; not a pipe end)"));
-                continue;
             }
-
-            // 3. Nothing there: a real open end, listed so it can be found.
-            results.Add(new Disconnect(DisconnectKind.Open, e.Id, null, p, 0, $"{Name(e)}: open end, nothing within reach"));
         }
         return results.OrderBy(r => r.Kind).ToList();
     }
