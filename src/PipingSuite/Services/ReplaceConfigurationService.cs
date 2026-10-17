@@ -12,7 +12,7 @@ namespace PipingSuite.Services;
 /// branch heads off sideways (towards its far end), or null when it runs straight out.
 /// </summary>
 public sealed record Branch(IReadOnlyList<Element> Elements, ElementId RootId, XYZ Origin, XYZ Out, XYZ? Across,
-    double RootRadius, Element? Header, ElementId? AssemblyId = null)
+    double RootRadius, Element? Header, string? SystemName, ElementId? AssemblyId = null)
 {
     public IEnumerable<ElementId> Ids => Elements.Select(e => e.Id);
 }
@@ -23,27 +23,54 @@ public sealed record Numbering(string Parameter, IncrementMode Mode, string Star
 public sealed record ReplaceResult(int Replaced, IReadOnlyList<ElementId> NewIds, IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// Replace Configuration: finds every branch with the same layout as a picked one (same system, same
-/// element types and sizes at the same spots relative to where it leaves the header) and swaps each for
-/// a correctly built branch or assembly, turned to face the way the old one did, then reconnects it to
-/// the header and to whatever else the old branch was connected to.
+/// Replace Configuration: finds every branch laid out like a picked one on any header section (same
+/// system type, element types and sizes at the same spots relative to where it leaves its header) and
+/// swaps each for a correctly built branch or assembly, turned to face the way the old one did, then
+/// reconnects it to its own header and to whatever else the old branch was connected to.
 /// </summary>
 public sealed class ReplaceConfigurationService(Document doc)
 {
     private const double Tol = 0.02; // ft (~1/4"): layout match and reconnect distance
 
     /// <summary>
-    /// Describes a selection as a branch. The root is the selection's one outside connection, or the one
-    /// to <paramref name="headerId"/>, or the connector nearest <paramref name="rootNear"/>; null when that
-    /// is ambiguous so the caller can ask. With <paramref name="rootRadius"/>, an outside connection only
-    /// counts if it is that size (a loose source branch may be connected at its far end instead).
+    /// Splits a selection into its separate branches (connected pieces), each with its header found
+    /// automatically. Pieces connected to nothing are skipped.
     /// </summary>
-    public Branch? Describe(IReadOnlyList<Element> elements, ElementId? headerId = null, XYZ? rootNear = null,
-        ElementId? assemblyId = null, double? rootRadius = null)
+    public List<Branch> Split(IReadOnlyList<Element> elements)
+    {
+        var byId = elements.ToDictionary(e => e.Id);
+        var uf = new UnionFind(byId.Keys);
+        foreach (var e in elements)
+        foreach (var n in PipingElements.GetConnectedElements(e).Where(n => byId.ContainsKey(n.Id)))
+            uf.Union(e.Id, n.Id);
+
+        return byId.Keys.GroupBy(uf.Find)
+            .Select(g => g.Select(id => byId[id]).ToList())
+            .Select(AutoDescribe).OfType<Branch>()
+            .ToList();
+    }
+
+    /// <summary>
+    /// A branch whose header is its outside connection to piping with the biggest connectors (the header
+    /// tee/olet), so equipment, valves or a smaller pipe at the far end are never taken for the header.
+    /// </summary>
+    private static Branch? AutoDescribe(IReadOnlyList<Element> elements)
+    {
+        var link = ExternalLinks(elements)
+            .OrderByDescending(l => PipingElements.IsPiping(l.Outside.Owner))
+            .ThenByDescending(l => MaxRadius(l.Outside.Owner))
+            .FirstOrDefault();
+        return link.Inside is null ? null : Build(elements, link.Inside, link.Outside.Owner, null);
+    }
+
+    /// <summary>
+    /// Describes the correct branch. The root is its one outside connection of the picked branches' root
+    /// size (a loose branch may be connected at its far end instead), or the connector nearest
+    /// <paramref name="rootNear"/>; null when that is ambiguous so the caller can ask.
+    /// </summary>
+    public Branch? Describe(IReadOnlyList<Element> elements, XYZ? rootNear = null, ElementId? assemblyId = null, double? rootRadius = null)
     {
         var links = ExternalLinks(elements)
-            .Where(l => headerId is null || l.Outside.Owner.Id == headerId // the tee/olet, or the header pipe it sits on
-                        || PipingElements.GetConnectedElements(l.Outside.Owner).Any(n => n.Id == headerId))
             .Where(l => rootRadius is null || Math.Abs(Radius(l.Inside) - rootRadius.Value) < 1e-4)
             .ToList();
         if (rootNear is null && links.Count == 1) return Build(elements, links[0].Inside, links[0].Outside.Owner, assemblyId);
@@ -54,33 +81,45 @@ public sealed class ReplaceConfigurationService(Document doc)
         return Build(elements, root, header, assemblyId);
     }
 
-    /// <summary>Other branches on the same system, off the same kind of header fitting, laid out like <paramref name="bad"/>.</summary>
-    public List<Branch> FindMatches(Branch bad, IReadOnlyCollection<ElementId> exclude)
+    /// <summary>
+    /// Every other branch laid out like one of <paramref name="picked"/>, on any header section: same
+    /// piping system type (not system name: separate header sections are usually separate systems), off
+    /// a header element of the same category (tee/olet), with the same layout. Each match's own header
+    /// is whatever it is connected to there, so it can be a different size or fitting type.
+    /// </summary>
+    public List<Branch> FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude)
     {
         var matches = new List<Branch>();
-        if (bad.Header is null) return matches;
+        var taken = new HashSet<ElementId>(exclude.Concat(picked.SelectMany(b => b.Ids)));
+        var references = picked.Where((b, i) => b.Header is not null && !picked.Take(i).Any(p => SameLayout(p, b))).ToList();
 
-        var rootElement = doc.GetElement(bad.RootId);
-        var system = SystemName(rootElement);
-        var headerType = bad.Header.GetTypeId();
-        var taken = new HashSet<ElementId>(exclude.Concat(bad.Ids));
-
-        var sameType = new ElementParameterFilter(ParameterFilterRuleFactory.CreateEqualsRule(
-            new ElementId(BuiltInParameter.ELEM_TYPE_PARAM), rootElement.GetTypeId()));
-        foreach (var candidate in new FilteredElementCollector(doc).WhereElementIsNotElementType().WherePasses(sameType))
+        foreach (var reference in references)
         {
-            if (taken.Contains(candidate.Id) || SystemName(candidate) != system) continue;
-            foreach (var c in PhysicalConnectors(candidate).Where(c => c.IsConnected))
-            {
-                var header = Refs(c).Select(r => r.Owner).FirstOrDefault(o => o.Id != candidate.Id && o.GetTypeId() == headerType);
-                if (header is null || Grow(candidate, header.Id, bad.Elements.Count) is not { } elements) continue;
-                if (elements.Any(e => taken.Contains(e.Id))) continue;
+            var rootElement = doc.GetElement(reference.RootId);
+            var systemType = SystemType(rootElement);
+            var headerCategory = reference.Header!.Category?.Id;
+            var sameType = new ElementParameterFilter(ParameterFilterRuleFactory.CreateEqualsRule(
+                new ElementId(BuiltInParameter.ELEM_TYPE_PARAM), rootElement.GetTypeId()));
 
-                var branch = Build(elements, c, header, null);
-                if (!SameLayout(bad, branch)) continue;
-                matches.Add(branch);
-                taken.UnionWith(branch.Ids);
-                break;
+            foreach (var candidate in new FilteredElementCollector(doc).WhereElementIsNotElementType().WherePasses(sameType))
+            {
+                if (taken.Contains(candidate.Id) || SystemType(candidate) != systemType) continue;
+                // Try the end facing the biggest neighbour first: that is the header side.
+                var ends = PhysicalConnectors(candidate).Where(c => c.IsConnected)
+                    .Select(c => (Connector: c, Header: Refs(c).Select(r => r.Owner).FirstOrDefault(o => o.Id != candidate.Id)))
+                    .Where(x => x.Header is not null && x.Header.Category?.Id == headerCategory)
+                    .OrderByDescending(x => MaxRadius(x.Header!));
+                foreach (var (c, header) in ends)
+                {
+                    if (Grow(candidate, header!.Id, reference.Elements.Count) is not { } elements) continue;
+                    if (elements.Any(e => taken.Contains(e.Id))) continue;
+
+                    var branch = Build(elements, c, header, null);
+                    if (!SameLayout(reference, branch)) continue;
+                    matches.Add(branch);
+                    taken.UnionWith(branch.Ids);
+                    break;
+                }
             }
         }
         return matches;
@@ -179,7 +218,7 @@ public sealed class ReplaceConfigurationService(Document doc)
             .Select(v => v - outward * v.DotProduct(outward))
             .MaxBy(v => v.GetLength());
         var across = far is not null && far.GetLength() > 0.05 ? far.Normalize() : null;
-        return new Branch(elements, root.Owner.Id, origin, outward, across, Radius(root), header, assemblyId);
+        return new Branch(elements, root.Owner.Id, origin, outward, across, Radius(root), header, SystemName(root.Owner), assemblyId);
     }
 
     /// <summary>
@@ -327,6 +366,10 @@ public sealed class ReplaceConfigurationService(Document doc)
     private static double Radius(Connector c) => c.Shape == ConnectorProfileType.Round ? c.Radius : 0;
 
     private static string? SystemName(Element e) => e.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM)?.AsString();
+
+    private static ElementId? SystemType(Element e) => e.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)?.AsElementId();
+
+    private static double MaxRadius(Element e) => PhysicalConnectors(e).Select(Radius).DefaultIfEmpty(0).Max();
 
     private string Format(XYZ p) => $"({UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.X, false)}, " +
                                     $"{UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.Y, false)}, " +

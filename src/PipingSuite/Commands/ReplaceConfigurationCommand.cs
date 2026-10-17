@@ -13,8 +13,9 @@ using PipingSuite.UI.Views;
 namespace PipingSuite.Commands;
 
 /// <summary>
-/// Pick a wrongly built branch and a correctly built one (or its assembly); every branch laid out like
-/// the wrong one on the same system is swapped for the correct one, reconnected, and optionally numbered.
+/// Pick one or more wrongly built branches and a correctly built one (or its assembly); every branch laid
+/// out like them, on any header section, is swapped for the correct one on its own header, reconnected,
+/// and optionally numbered.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 public sealed class ReplaceConfigurationCommand : IExternalCommand
@@ -27,44 +28,45 @@ public sealed class ReplaceConfigurationCommand : IExternalCommand
 
         try
         {
-            // 1. The wrong branch, and where it meets the header.
+            // 1. The wrong branch(es): one or several, each on whatever header it comes off.
             var badElements = uiDoc.Selection.GetElementIds().Select(doc.GetElement).Where(PipingElements.IsPiping).ToList();
             if (badElements.Count == 0)
                 badElements = Pick(uiDoc, new PipingSelectionFilter(),
-                    "Select the INCORRECT branch (its pipes, fittings, valves; not the header tee/olet), then Finish");
-            if (ReplaceConfigurationService.ExternalLinks(badElements).Count == 0)
-                return Fail("The selected branch isn't connected to a header.");
-            var bad = service.Describe(badElements)
-                      ?? service.Describe(badElements, headerId: uiDoc.Selection.PickObject(ObjectType.Element,
-                          "Pick the header pipe or the tee/olet this branch comes off").ElementId)
-                      ?? throw new InvalidOperationException("The picked element isn't connected to that branch.");
+                    "Select one or more INCORRECT branches (pipes, fittings, valves; not the header tees/olets), then Finish");
+            var picked = service.Split(badElements);
+            if (picked.Count == 0) return Fail("None of the selected branches is connected to a header.");
 
             // 2. The correct branch or assembly, and its header end.
-            var picked = Pick(uiDoc, new PredicateSelectionFilter(e => PipingElements.IsPiping(e) || e is AssemblyInstance),
+            var goodPick = Pick(uiDoc, new PredicateSelectionFilter(e => PipingElements.IsPiping(e) || e is AssemblyInstance),
                 "Select the CORRECT branch or its assembly, then Finish");
-            var assemblies = picked.OfType<AssemblyInstance>().ToList();
-            var goodElements = picked.Where(e => e is not AssemblyInstance)
+            var assemblies = goodPick.OfType<AssemblyInstance>().ToList();
+            var goodElements = goodPick.Where(e => e is not AssemblyInstance)
                 .Concat(assemblies.SelectMany(a => a.GetMemberIds()).Select(doc.GetElement))
                 .DistinctBy(e => e.Id).ToList();
             if (goodElements.Any(e => badElements.Any(b => b.Id == e.Id)))
-                return Fail("The correct branch overlaps the incorrect one.");
-            var assemblyId = assemblies.Count == 1 && picked.Count == 1 ? assemblies[0].Id : null;
-            var good = service.Describe(goodElements, assemblyId: assemblyId, rootRadius: bad.RootRadius)
+                return Fail("The correct branch overlaps an incorrect one.");
+            var assemblyId = assemblies.Count == 1 && goodPick.Count == 1 ? assemblies[0].Id : null;
+            var good = service.Describe(goodElements, assemblyId: assemblyId, rootRadius: picked[0].RootRadius)
                        ?? service.Describe(goodElements, rootNear: uiDoc.Selection.PickObject(ObjectType.PointOnElement,
-                           "Click the end of the CORRECT branch that connects to the header").GlobalPoint, assemblyId: assemblyId);
+                           "Click the end of the CORRECT branch that connects to the header").GlobalPoint, assemblyId: assemblyId)!;
 
-            // 3. Everything laid out like the wrong branch, shown highlighted behind the dialog.
-            var matches = service.FindMatches(bad!, goodElements.Select(e => e.Id).ToList());
-            uiDoc.Selection.SetElementIds(bad!.Ids.Concat(matches.SelectMany(m => m.Ids)).ToList());
+            // 3. Everything laid out like them on any header section, shown highlighted behind the dialog.
+            var matches = service.FindMatches(picked, goodElements.Select(e => e.Id).ToList());
+            uiDoc.Selection.SetElementIds(picked.Concat(matches).SelectMany(b => b.Ids).ToList());
 
-            var system = doc.GetElement(bad.RootId).get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM)?.AsString() ?? "(no system)";
+            var systems = picked.Select(b => b.SystemName ?? "(no system)").Distinct().ToList();
+            int sameSystem = matches.Count(m => systems.Contains(m.SystemName ?? "(no system)"));
+            var headers = picked.Concat(matches).Select(b => b.Header?.Id).Distinct().Count();
             var vm = new ReplaceConfigurationViewModel(
-                $"Found {matches.Count} other branch(es) on \"{system}\" laid out like the picked one ({bad.Elements.Count} elements each).",
-                matches.Count, SourceValues(doc, good!, goodElements));
+                $"Picked {picked.Count} branch(es); found {matches.Count} more laid out the same, on {headers} header connection(s) in total.",
+                matches.Count, $"Only branches on {string.Join(", ", systems)} ({sameSystem} of the {matches.Count} matches)",
+                SourceValues(doc, good, goodElements));
             if (!WindowHelper.ShowModal(new ReplaceConfigurationWindow(vm), commandData.Application)) return Result.Cancelled;
 
-            var targets = vm.ReplaceAll ? [bad, .. matches] : new List<Branch> { bad };
-            var result = service.Replace(targets, good!, vm.ToNumbering());
+            var targets = picked
+                .Concat(vm.ReplaceAll ? matches.Where(m => !vm.SameSystemOnly || systems.Contains(m.SystemName ?? "(no system)")) : [])
+                .ToList();
+            var result = service.Replace(targets, good, vm.ToNumbering());
             uiDoc.Selection.SetElementIds(result.NewIds.ToList());
 
             new TaskDialog("Replace Configuration")
