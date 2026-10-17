@@ -48,10 +48,27 @@ public sealed class DisconnectService(Document doc)
     private const double Facing = -0.98; // cosine: ends pointing at each other
     private const double Square = 0.2;   // |cosine|: a branch end roughly square to the pipe it lands on
 
-    /// <summary>The selected elements that have piping connectors (a selected system counts as its elements).</summary>
-    public static List<Element> Scope(IEnumerable<Element> picked) =>
-        picked.SelectMany(e => e is PipingSystem ps ? ps.PipingNetwork.Cast<Element>() : [e])
-            .DistinctBy(e => e.Id).Where(e => PhysicalConnectors(e).Any()).ToList();
+    /// <summary>
+    /// The selected elements that have piping connectors (a selected system counts as its elements), plus any
+    /// olets on or at them: an unattached olet has no connection to the pipes around it, so selecting the
+    /// header and branch alone would otherwise never reach it.
+    /// </summary>
+    public List<Element> Scope(IEnumerable<Element> picked)
+    {
+        var found = picked.SelectMany(e => e is PipingSystem ps ? ps.PipingNetwork.Cast<Element>() : [e])
+            .Where(e => PhysicalConnectors(e).Any())
+            .ToDictionary(e => e.Id);
+        foreach (var e in found.Values.ToList())
+        {
+            foreach (var n in PipingElements.GetConnectedElements(e).Where(OletService.IsTap)) found.TryAdd(n.Id, n);
+            if (e is not Pipe || e.get_BoundingBox(null) is not { } bb) continue;
+            var pad = new XYZ(1, 1, 1) * 0.25;
+            foreach (var t in new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_PipeFitting).WhereElementIsNotElementType()
+                         .WherePasses(new BoundingBoxIntersectsFilter(new Outline(bb.Min - pad, bb.Max + pad))).Where(OletService.IsTap))
+                found.TryAdd(t.Id, t);
+        }
+        return found.Values.ToList();
+    }
 
     /// <summary>Open ends in <paramref name="scope"/> that touch something they should be joined to (ends touching nothing are left out).</summary>
     /// <param name="tolerance">How far apart (ft) still counts as touching.</param>
@@ -60,9 +77,22 @@ public sealed class DisconnectService(Document doc)
     {
         var results = new List<Disconnect>();
         var paired = new HashSet<(long, long)>();
+        var seats = new HashSet<(long, XYZ)>();
+
+        // Olets sitting on a pipe without being attached to it, recognised by shape rather than by how the
+        // family's connectors happen to be set up: the outlet points straight out from a pipe the olet sits on.
+        foreach (var olet in scope.Where(e => OletService.IsTap(e) && OletService.AsOlet(e) is null))
+        {
+            if (Seat(olet, tolerance) is not var (host, seat)) continue;
+            seats.Add((olet.Id.Value, seat.Origin));
+            results.Add(new Disconnect(DisconnectKind.Olet, olet.Id, host.Id, seat.Origin, 0,
+                $"{Name(olet)} sits on {Name(host)} without being attached"));
+        }
+
         foreach (var e in scope)
         foreach (var c in PhysicalConnectors(e).Where(c => !c.IsConnected).ToList())
         {
+            if (seats.Contains((e.Id.Value, c.Origin))) continue;
             var p = c.Origin;
             var pad = new XYZ(1, 1, 1) * (tolerance + 0.05);
             var near = new FilteredElementCollector(doc).WhereElementIsNotElementType().WherePasses(Joinable)
@@ -81,17 +111,13 @@ public sealed class DisconnectService(Document doc)
                 continue;
             }
 
-            // 2. Landing on the side of a pipe.
+            // 2. A pipe end landing on the side of a pipe: it needs an olet there.
+            if (OletService.IsTap(e)) continue; // olets were handled above
             var host = near.OfType<Pipe>().FirstOrDefault(h => OnSide(h, c, tolerance) && (!sameSystemType || SameSystem(c, PhysicalConnectors(h).First())));
             if (host is not null)
-            {
-                bool olet = OletService.IsTap(e);
-                results.Add(new Disconnect(olet ? DisconnectKind.Olet : e is Pipe ? DisconnectKind.Takeoff : DisconnectKind.Review,
-                    e.Id, host.Id, p, 0,
-                    olet ? $"{Name(e)} sits on {Name(host)} without being attached"
-                    : e is Pipe ? $"{Name(e)} ends on the side of {Name(host)}"
+                results.Add(new Disconnect(e is Pipe ? DisconnectKind.Takeoff : DisconnectKind.Review, e.Id, host.Id, p, 0,
+                    e is Pipe ? $"{Name(e)} ends on the side of {Name(host)} (add an olet)"
                     : $"{Name(e)} ends on the side of {Name(host)} (needs a tee or olet; not a pipe end)"));
-            }
         }
         return results.OrderBy(r => r.Kind).ToList();
     }
@@ -175,7 +201,11 @@ public sealed class DisconnectService(Document doc)
                 doc.Create.NewTransitionFitting(mine, OpenNear(other!, item.At)!);
                 break;
             case DisconnectKind.Takeoff:
-                doc.Create.NewTakeoffFitting(mine, (MEPCurve)other!);
+                // An olet of whatever type works (the pipe type's tap, else a loaded olet), then the pipe onto its outlet.
+                var placed = new OletService(doc, doc.ActiveView).PlaceAuto((Pipe)other!, mine.Origin, mine.CoordinateSystem.BasisZ.Negate(), Radius(mine) * 2);
+                var outlet = OletService.AsOlet(placed)?.Branch ?? throw new InvalidOperationException("The new olet has no outlet.");
+                if (MoveEnd(owner, mine.Origin, outlet.Origin)) mine = OpenNear(owner, outlet.Origin)!;
+                mine.ConnectTo(outlet);
                 break;
             case DisconnectKind.Olet:
                 Reseat((FamilyInstance)owner, (Pipe)other!);
@@ -209,6 +239,38 @@ public sealed class DisconnectService(Document doc)
         target.ConnectTo(newOutlet);
     }
 
+    /// <summary>
+    /// The pipe an unattached olet sits on, and the olet's seat connector: a straight pipe the olet's outlet
+    /// points straight out from, with the seat at its outside surface (within tolerance, at least 5/8").
+    /// </summary>
+    private (Pipe Host, Connector Seat)? Seat(Element olet, double tolerance)
+    {
+        var connectors = PhysicalConnectors(olet).ToList();
+        if (connectors.Count < 2 || olet.get_BoundingBox(null) is not { } bb) return null;
+        var pad = new XYZ(1, 1, 1) * 0.5;
+        var pipes = new FilteredElementCollector(doc).OfCategory(BuiltInCategory.OST_PipeCurves).WhereElementIsNotElementType()
+            .WherePasses(new BoundingBoxIntersectsFilter(new Outline(bb.Min - pad, bb.Max + pad))).OfType<Pipe>();
+
+        (Pipe, Connector, double)? best = null;
+        foreach (var pipe in pipes)
+        {
+            if (pipe.Location is not LocationCurve { Curve: Line line }) continue;
+            double Off(Connector c) => c.Origin.DistanceTo(line.Project(c.Origin).XYZPoint);
+            var outlet = connectors.MaxBy(Off)!;
+            var seat = connectors.MinBy(Off)!;
+            var foot = line.Project(seat.Origin).XYZPoint;
+            double along = (foot - line.GetEndPoint(0)).DotProduct(line.Direction);
+            double radius = (pipe.get_Parameter(BuiltInParameter.RBS_PIPE_OUTER_DIAMETER)?.AsDouble() ?? pipe.Diameter) / 2;
+            var facing = outlet.CoordinateSystem.BasisZ;
+            bool sits = along > -tolerance && along < line.Length + tolerance
+                        && Off(seat) <= radius + Math.Max(tolerance, 0.05)
+                        && Math.Abs(facing.DotProduct(line.Direction)) < Square                // square to the pipe
+                        && facing.DotProduct(outlet.Origin - line.Project(outlet.Origin).XYZPoint) > 0; // pointing away from it
+            if (sits && (best is null || Off(seat) < best.Value.Item3)) best = (pipe, seat, Off(seat));
+        }
+        return best is { } b ? (b.Item1, b.Item2) : null;
+    }
+
     /// <summary>Moves a straight pipe's end at <paramref name="from"/> to <paramref name="to"/>; false for anything else.</summary>
     private static bool MoveEnd(Element e, XYZ from, XYZ to)
     {
@@ -234,7 +296,7 @@ public sealed class DisconnectService(Document doc)
         return along > pipe.Diameter && along < line.Length - pipe.Diameter
                && c.Origin.DistanceTo(foot) <= radius + tolerance
                && Math.Abs(dir.DotProduct(axis)) < Square
-               && dir.DotProduct(foot - c.Origin) >= 0;
+               && dir.DotProduct(foot - c.Origin) >= -1e-6;
     }
 
     /// <summary>Same system classification, or one side unclassified (fittings, accessories report none).</summary>
