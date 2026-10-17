@@ -214,7 +214,7 @@ public sealed class ReplaceConfigurationService(Document doc)
         {
             var target = ordered[i];
             var label = $"Branch [{target.Old.RootId.Value}]";
-            var failures = new Failures();
+            var failures = new FailureCollector();
             using var t = new Transaction(doc, "Replace Configuration - placement");
             t.SetFailureHandlingOptions(t.GetFailureHandlingOptions().SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
             t.Start();
@@ -462,23 +462,4 @@ public sealed class ReplaceConfigurationService(Document doc)
     private string Format(XYZ p) => $"({UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.X, false)}, " +
                                     $"{UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.Y, false)}, " +
                                     $"{UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.Z, false)})";
-
-    /// <summary>
-    /// Keeps a placement's warnings from popping up one dialog per branch, and records why Revit rolls one
-    /// back so the report can say so instead of failing silently.
-    /// </summary>
-    private sealed class Failures : IFailuresPreprocessor
-    {
-        public List<string> Errors { get; } = [];
-
-        public FailureProcessingResult PreprocessFailures(FailuresAccessor accessor)
-        {
-            foreach (var f in accessor.GetFailureMessages())
-            {
-                if (f.GetSeverity() == FailureSeverity.Warning) accessor.DeleteWarning(f);
-                else Errors.Add(f.GetDescriptionText());
-            }
-            return Errors.Count > 0 ? FailureProcessingResult.ProceedWithRollBack : FailureProcessingResult.Continue;
-        }
-    }
 }

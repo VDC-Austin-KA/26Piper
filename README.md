@@ -122,6 +122,19 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - **With olets:** the old olet goes too. A new olet of the correct branch's olet type (or the old type if the correct branch has none) is made on the same header pipe at the same spot. The new branch is then nudged onto its outlet and connected. Because olets are left out of matching, an olet on a bigger or smaller header doesn't stop a branch from matching. Every connection the old branch had (header, equipment at the far end, …) is then remade where the new branch has an open end. An assembly is copied as a new instance of the same assembly type.
 - Each placement is its own transaction inside one undo group, and Revit warnings are suppressed. A placement Revit rejects keeps its old branch, and the report gives Revit's reason. The report also lists any connection left open or joining mismatched sizes; these don't stop the placement.
 
+**Connect Disconnects** (Routing panel) finds and fixes pieces that touch but aren't connected:
+1. **Scope:** preselect, or pick, any pipe or fitting in the system(s) to check. Every element of those piping systems is checked. Revit splits a system where it's broken, so the loose pieces are usually in another system. The search therefore looks at everything near each open end, not just the picked system.
+2. **What it finds** (within a tolerance, default 1/8"):
+   - **Connect:** two open ends that touch, are the same size and face each other. A hairline gap is closed by moving a pipe end onto the other connector first.
+   - **Add elbow:** two pipe ends that touch at an angle.
+   - **Add transition:** two pipe ends in line but of different sizes.
+   - **Add takeoff:** a pipe end landing on the side of another pipe.
+   - **Re-attach olet:** an olet sitting on a pipe without being attached to it. It's re-made as a real takeoff of the same type, size and direction, and whatever it fed is reconnected.
+   - **Check:** touching but needing judgement (fittings at an angle, a size change on a fitting). Listed, not fixed.
+   - **Open end:** nothing within reach. Listed so it can be found, and can be hidden.
+3. **Same system type only** (on by default) never joins e.g. supply to return. Fittings and accessories without a system type always qualify.
+4. **Window:** the list stays open while you work. **Zoom** selects an item and zooms to it in Revit. Tick what to fix, then **Connect ticked**. Each fix is its own step in one undo group. One Revit refuses is rolled back and reported without affecting the others, and the list rescans to show what's left.
+
 ## Roadmap
 
 **Feature B – view filters**
