@@ -46,6 +46,8 @@ public sealed class App : IExternalApplication
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",
             "Color elements in the active view by the value of any parameter. Save and load color schemes.");
+        AddButton<IsoMapCommand>(view, "ISO\nMap", "iso_map", "iso_map",
+            "Make a locked isometric of the selection named \"ISO MAP - <PACKAGE>\": isolated, colored by BC_LINE SEGMENT, pipes tagged, cropped square for sheets.");
 
         application.ControlledApplication.ApplicationInitialized += (_, _) => AttachVideoTooltips();
         return Result.Succeeded;

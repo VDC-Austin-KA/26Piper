@@ -98,7 +98,7 @@ public sealed class ColorSplasherService(Document doc, View view)
     }
 
     /// <summary>Sorts "L2" before "L10".</summary>
-    private sealed class NaturalComparer : IComparer<string>
+    internal sealed class NaturalComparer : IComparer<string>
     {
         public static readonly NaturalComparer Instance = new();
 

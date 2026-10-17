@@ -179,6 +179,20 @@ def icon_copy_olet(d):
     arrow(d, (20, 60), (20, 100), 6, GREEN)
 
 
+def _iso(x, y, z, ox, oy, k):
+    """Isometric projection (30°) of plan x/y and height z."""
+    return (ox + (x + y) * k * 0.866, oy + (x - y) * k * 0.5 - z * k)
+
+
+def icon_iso_map(d):
+    d.rectangle([6, 6, 122, 122], outline=INK, width=5)                  # square crop
+    run = [(0, 0, 0), (3, 0, 0), (3, 0, 3), (3, 3, 3)]
+    pts = [_iso(*p, 22, 58, 15) for p in run]
+    for (a, b), c in zip(zip(pts, pts[1:]), (RED, GREEN, PURPLE)):    # rainbow by line segment
+        pipe(d, a, b, 13, c)
+    tag(d, 44, 92, 66, 22, ORANGE)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -188,6 +202,7 @@ ICONS = {
     "color": icon_color,
     "olet": icon_olet,
     "copy_olet": icon_copy_olet,
+    "iso_map": icon_iso_map,
 }
 
 
@@ -365,6 +380,28 @@ def scene_copy_olet(t, d):
     caption(d, "Copy Olet: same spot on every selected pipe")
 
 
+def scene_iso_map(t, d):
+    f = font(9 * SS, True)
+    run = [(0, 0, 0), (5, 0, 0), (5, 0, 4), (5, 5, 4), (9, 5, 4)]
+    colors = [RED, ORANGE, GREEN, PURPLE]
+    pts = [s(*_iso(*p, 99, 112, 11)) for p in run]
+    for i, (a, b) in enumerate(zip(pts, pts[1:])):
+        pipe(d, a, b, 8 * SS, mix(GHOST, colors[i], phase(t, 0.6 + i * 0.25, 1.1 + i * 0.25)))
+    for i, (a, b) in enumerate(zip(pts, pts[1:])):                   # tags pushed off the pipe
+        p = phase(t, 1.9 + i * 0.25, 2.3 + i * 0.25)
+        if p > 0:
+            mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+            dx, dy = [(-23, 10), (-58, -7), (-23, -30), (-10, 10)][i]   # beside each run, clear of the others
+            tag(d, mx + dx * SS, my + dy * SS, 46 * SS, 14 * SS, mix(BG, INK, p), f'{2 + i}" CW', f)
+    sq = phase(t, 3.2, 3.8)                                          # crop snaps to a square
+    if sq > 0:
+        side = 190 * (0.9 + 0.1 * sq)
+        x0, y0 = 70 + (190 - side) / 2, 10 + (190 - side) / 2
+        dashed_rect(d, (*s(x0, y0), *s(x0 + side, y0 + side)), ORANGE, 2 * SS, 6 * SS, sq)
+        d.text(s(330, 100), "ISO MAP - PKG9", font=font(10 * SS, True), fill=mix(BG, INK, sq), anchor="mm")
+    caption(d, "ISO Map: locked iso, colored by line segment, tagged, square")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -373,6 +410,7 @@ SCENES = {
     "color": scene_color,
     "olet": scene_olet,
     "copy_olet": scene_copy_olet,
+    "iso_map": scene_iso_map,
 }
 
 
