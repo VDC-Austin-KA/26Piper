@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
     <!-- Single version for the add-in, the zip package and Setup.exe. -->
-    <Version>1.9.0</Version>
+    <Version>1.9.1</Version>
   </PropertyGroup>
 </Project>

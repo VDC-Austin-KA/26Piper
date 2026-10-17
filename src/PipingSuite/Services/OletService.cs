@@ -75,6 +75,10 @@ public sealed class OletService(Document doc, View view)
     public FamilyInstance PlaceOn(Pipe main, XYZ outlet, XYZ direction, double diameter, ElementId symbolId) =>
         CreateOlet(main, MainLine(main).Project(outlet).XYZPoint, direction, diameter, symbolId, strict: true);
 
+    /// <summary>Like <see cref="PlaceOn"/>, with whichever olet type works (pipe type's tap, last used, loaded olets, library).</summary>
+    public FamilyInstance PlaceAuto(Pipe main, XYZ outlet, XYZ direction, double diameter) =>
+        CreateOlet(main, MainLine(main).Project(outlet).XYZPoint, direction, diameter, null, strict: false);
+
     /// <summary>The main pipe and open branch connector, when <paramref name="e"/> is an olet on a pipe.</summary>
     public static (Pipe Main, Connector Branch)? AsOlet(Element e)
     {

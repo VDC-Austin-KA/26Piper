@@ -129,13 +129,13 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - Each placement is its own transaction inside one undo group, and Revit warnings are suppressed. A placement Revit rejects keeps its old branch, and the report gives the reason.
 
 **Connect Disconnects** (Routing panel) finds and fixes pieces that touch but aren't connected:
-1. **Scope:** preselect, or window-select when prompted, the piping to check. Only the selected elements' open ends are checked, so it's quick on any model. Each open end looks at what is right there, selected or not, so a selected branch can still be joined to an unselected header.
+1. **Scope:** preselect, or window-select when prompted, the piping to check. Only the selection is checked, so it's quick on any model. Each open end looks at what is right there, selected or not, so a selected branch can still be joined to an unselected header. Olets on or at the selected pipes are always included, even if they weren't picked: an unattached olet isn't connected to anything, so selecting only its header and branch would otherwise never reach it.
 2. **What it finds** (within a tolerance, default 1/8"); ends touching nothing are not listed:
    - **Connect:** two open ends that touch, are the same size and face each other. A hairline gap is closed by moving a pipe end onto the other connector first.
    - **Add elbow:** two pipe ends that touch at an angle.
    - **Add transition:** two pipe ends in line but of different sizes.
-   - **Add takeoff:** a pipe end landing on the side of another pipe.
-   - **Re-attach olet:** an olet sitting on a pipe without being attached to it. It's re-made as a real takeoff of the same type, size and direction, and whatever it fed is reconnected.
+   - **Add olet:** a pipe end landing on the side of another pipe. An olet is placed there the same way Insert Olet does it: the pipe type's tap if it has one, otherwise a loaded olet family. This works even when the routing preferences only have a tee. The pipe end is then moved onto the olet's outlet and connected.
+   - **Re-attach olet:** an olet sitting on a pipe without being attached to it. It's recognised by shape, not by how the family's connectors are set up: its outlet points straight out from a pipe it sits on, within 5/8" of the surface. It's re-made as a real takeoff of the same type, size and direction, and whatever it fed is reconnected.
    - **Check:** touching but needing judgement (fittings at an angle, a size change on a fitting). Listed, not fixed.
 3. **Same system type only** (on by default) never joins e.g. supply to return.
 4. **Window:** the list stays open while you work. **Zoom** selects an item and zooms to it in Revit. Tick what to fix, then **Connect ticked**. Each fix is its own step in one undo group, and the list rescans the same selection afterwards.

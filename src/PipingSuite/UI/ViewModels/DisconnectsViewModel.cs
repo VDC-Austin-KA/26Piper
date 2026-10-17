@@ -29,7 +29,7 @@ public sealed partial class DisconnectItem(Disconnect item) : ObservableObject
         DisconnectKind.Ends => "Connect",
         DisconnectKind.Elbow => "Add elbow",
         DisconnectKind.Transition => "Add transition",
-        DisconnectKind.Takeoff => "Add takeoff",
+        DisconnectKind.Takeoff => "Add olet",
         DisconnectKind.Olet => "Re-attach olet",
         _ => "Check",
     };

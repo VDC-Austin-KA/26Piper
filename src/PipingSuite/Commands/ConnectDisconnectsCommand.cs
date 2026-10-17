@@ -34,7 +34,7 @@ public sealed class ConnectDisconnectsCommand : IExternalCommand
                     .Select(doc.GetElement).ToList();
 
             var service = new DisconnectService(doc);
-            var scope = DisconnectService.Scope(picked);
+            var scope = service.Scope(picked);
             if (scope.Count == 0) return Result.Cancelled;
             var vm = new DisconnectsViewModel(
                 $"{scope.Count} selected element(s): their open ends that touch something they aren't connected to",
