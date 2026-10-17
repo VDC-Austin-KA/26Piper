@@ -112,6 +112,29 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Legend:** swatches in the same colors, with the package names inside, stacked to the left of the boxes and top-aligned with them.
 - Everything is one undo. Revit then opens the new view and reports the box count.
 
+**Replace Configuration** (Routing panel) swaps wrongly built branches for a correct one, across every header section:
+1. **Pick the wrong branches:** preselect or window-select one or more of them, on any header sections. Pick their pipes, fittings and valves, and their olets too if those should be replaced as well. The selection is split into separate branches. Each branch's header is found automatically: it's the outside connection to the piping with the biggest connectors. With the olet included, the header is the pipe the olet sits on.
+2. **Pick the correct branch:** select its elements (with its olet, if it has one), or its assembly. It can be loose or already on a header. You don't need to say which end goes to the header: every end of the right size is tried, and the end and orientation where it best lies over the wrong branch are used.
+3. **Matching:** a branch matches when it can be walked side by side with a picked one from its header connection, element for element. Each element must have the same type and sizes, and every connector must be at the same spot (within 1/2") and facing the same way. Only the picked branch's elements are compared, so whatever a branch runs on into (equipment, a rack manifold) doesn't matter. The header can be any section, size, fitting type or system name, on either side, facing any direction. Up stays up: a branch that drops never matches one that rises. Matches must be on the same piping system type.
+4. **Review in the model:** every branch to be replaced is selected and zoomed to, inside a live Revit pick. You can pan, zoom and orbit. Shift+click a branch to drop it, Ctrl+click elements of another branch to add it, then Finish.
+5. **Numbering (optional):** pick a parameter and step either its last number (`01 → 02`, `09 → 10`) or its last letter (`DETAIL A → DETAIL B`, `Z → AA`) for each placement. Placements are numbered along the direction they spread out most, lowest coordinate first. The first value defaults to one step past the correct branch's own value and can be edited, and a preview shows the first few.
+6. **Replace:** each old branch is deleted, and the correct one is copied onto that branch's own header connection, turned (about vertical) to run the same way.
+   - **With olets:** the old olet goes too. A new olet of the correct branch's olet type (or the old type if the correct branch has none) is made on the same header pipe at the same spot. The new branch is then nudged onto its outlet and connected. Because olets are left out of matching, an olet on a bigger or smaller header doesn't stop a branch from matching. Every connection the old branch had (header, equipment at the far end, …) is then remade where the new branch has an open end. An assembly is copied as a new instance of the same assembly type.
+- Each placement is its own transaction inside one undo group, and Revit warnings are suppressed. A placement Revit rejects keeps its old branch, and the report gives Revit's reason. The report also lists any connection left open or joining mismatched sizes; these don't stop the placement.
+
+**Connect Disconnects** (Routing panel) finds and fixes pieces that touch but aren't connected:
+1. **Scope:** preselect, or pick, any pipe or fitting in the system(s) to check. Every element of those piping systems is checked. Revit splits a system where it's broken, so the loose pieces are usually in another system. The search therefore looks at everything near each open end, not just the picked system.
+2. **What it finds** (within a tolerance, default 1/8"):
+   - **Connect:** two open ends that touch, are the same size and face each other. A hairline gap is closed by moving a pipe end onto the other connector first.
+   - **Add elbow:** two pipe ends that touch at an angle.
+   - **Add transition:** two pipe ends in line but of different sizes.
+   - **Add takeoff:** a pipe end landing on the side of another pipe.
+   - **Re-attach olet:** an olet sitting on a pipe without being attached to it. It's re-made as a real takeoff of the same type, size and direction, and whatever it fed is reconnected.
+   - **Check:** touching but needing judgement (fittings at an angle, a size change on a fitting). Listed, not fixed.
+   - **Open end:** nothing within reach. Listed so it can be found, and can be hidden.
+3. **Same system type only** (on by default) never joins e.g. supply to return. Fittings and accessories without a system type always qualify.
+4. **Window:** the list stays open while you work. **Zoom** selects an item and zooms to it in Revit. Tick what to fix, then **Connect ticked**. Each fix is its own step in one undo group. One Revit refuses is rolled back and reported without affecting the others, and the list rescans to show what's left.
+
 ## Roadmap
 
 **Feature B – view filters**

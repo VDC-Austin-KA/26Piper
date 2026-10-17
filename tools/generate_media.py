@@ -206,6 +206,27 @@ def icon_overall_map(d):
             d.line([(x + 15, y + 4), (x + 15, y + 26)], fill=INK, width=4)
 
 
+def _valve(d, cx, cy, r, color):
+    """Bow-tie valve symbol on a vertical run."""
+    d.polygon([(cx - r, cy - r), (cx + r, cy - r), (cx - r, cy + r), (cx + r, cy + r)], fill=color)
+
+
+def icon_replace(d):
+    pipe(d, (6, 18), (122, 18), 20)                                       # header
+    pipe(d, (34, 28), (34, 112), 12, GHOST)                               # old branch
+    pipe(d, (94, 28), (94, 112), 12, GREEN)                               # correct branch
+    _valve(d, 94, 64, 12, INK)
+    arrow(d, (48, 70), (78, 70), 6, ORANGE)
+
+
+def icon_heal(d):
+    pipe(d, (6, 64), (58, 64), 22)                                        # two runs touching, not joined
+    pipe(d, (70, 64), (122, 64), 22)
+    d.ellipse([46, 34, 82, 94], outline=RED, width=6)                     # the disconnect
+    check(d, 64, 108, 12, GREEN, 7)                                       # joined
+    pipe(d, (64, 6), (64, 30), 12, PIPE_LIGHT)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -217,6 +238,8 @@ ICONS = {
     "copy_olet": icon_copy_olet,
     "iso_map": icon_iso_map,
     "overall_map": icon_overall_map,
+    "replace": icon_replace,
+    "heal": icon_heal,
 }
 
 
@@ -437,6 +460,43 @@ def scene_overall_map(t, d):
     caption(d, "Overall Map: a translucent box per spool, colored by package")
 
 
+def scene_replace(t, d):
+    f = font(10 * SS, True)
+    pipe(d, s(20, 40), s(380, 40), 16 * SS)                               # header stays
+    for i, x in enumerate((80, 200, 320)):
+        swap = phase(t, 1.2 + i * 0.5, 1.7 + i * 0.5)
+        if swap < 1:                                                      # old branch fades out
+            pipe(d, s(x, 48), s(x, 180), 10 * SS, mix(GHOST, BG, swap))
+        if swap > 0:                                                      # correct one drops in, same spot and direction
+            y = 30 * (1 - swap)
+            col = mix(BG, GREEN, swap)
+            pipe(d, s(x, 48 - y), s(x, 180 - y), 10 * SS, col)
+            _valve(d, *s(x, 100 - y), 9 * SS, mix(BG, INK, swap))
+            d.ellipse([*s(x - 5, 140 - y), *s(x + 5, 150 - y)], fill=mix(BG, ORANGE, swap))   # olet
+            d.text(s(x + 16, 165 - y), f"DETAIL {'ABC'[i]}", font=f, fill=mix(BG, INK, swap), anchor="lm")
+    caption(d, "Replace Config: swap every matching branch, numbered")
+
+
+def scene_heal(t, d):
+    f = font(9 * SS, True)
+    pipe(d, s(20, 60), s(380, 60), 16 * SS)                               # header
+    spots = [(90, 66, "connect"), (200, 66, "takeoff"), (310, 140, "elbow")]
+    pipe(d, s(90, 68), s(90, 180), 10 * SS)                               # branch end touching a pipe end
+    pipe(d, s(200, 70), s(200, 180), 10 * SS)                             # pipe end on the header side
+    pipe(d, s(310, 68), s(310, 140), 10 * SS)                             # pipes meeting at an angle
+    pipe(d, s(316, 140), s(380, 140), 10 * SS)
+    for i, (x, y, label) in enumerate(spots):
+        found = phase(t, 0.5 + i * 0.3, 0.9 + i * 0.3)
+        fixed = phase(t, 2.4 + i * 0.4, 2.8 + i * 0.4)
+        if found > 0 and fixed < 1:
+            r = 16
+            d.ellipse([*s(x - r, y - r), *s(x + r, y + r)], outline=mix(BG, RED, found * (1 - fixed)), width=3 * SS)
+        if fixed > 0:
+            d.rectangle([*s(x - 9, y - 7), *s(x + 9, y + 7)], fill=mix(BG, GREEN, fixed))
+            d.text(s(x + 14, y + 22), label, font=f, fill=mix(BG, INK, fixed), anchor="lm")
+    caption(d, "Connect Disconnects: find touching ends, then join them")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -447,6 +507,8 @@ SCENES = {
     "copy_olet": scene_copy_olet,
     "iso_map": scene_iso_map,
     "overall_map": scene_overall_map,
+    "replace": scene_replace,
+    "heal": scene_heal,
 }
 
 

@@ -1,0 +1,54 @@
+<Window x:Class="PipingSuite.UI.Views.DisconnectsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Connect Disconnects" Width="760" Height="520" MinWidth="560" MinHeight="320"
+        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Scope}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Touching within" VerticalAlignment="Center" />
+            <TextBox Text="{Binding ToleranceInches, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="6,0,4,0" />
+            <TextBlock Text="in" VerticalAlignment="Center" />
+            <CheckBox Content="Same system type only" IsChecked="{Binding SameSystemType}" VerticalAlignment="Center" Margin="16,0,0,0"
+                      ToolTip="Never join e.g. supply to return. Fittings and accessories without a system type always qualify." />
+            <CheckBox Content="Show open ends" IsChecked="{Binding ShowOpenEnds}" VerticalAlignment="Center" Margin="16,0,0,0" />
+            <Button Content="Rescan" Padding="10,2" Margin="16,0,0,0" Command="{Binding ScanCommand}" />
+        </StackPanel>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Connect ticked" Padding="10,2" IsDefault="True" Command="{Binding ConnectCommand}" />
+                <Button Content="Close" Width="80" Margin="8,0,0,0" IsCancel="True" />
+            </StackPanel>
+            <Button DockPanel.Dock="Left" Content="Tick all" Padding="10,2" Command="{Binding CheckAllCommand}" />
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="12,0" Foreground="Gray" />
+        </DockPanel>
+
+        <ListView ItemsSource="{Binding ItemsView}">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Width="32">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanFix}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Fix" Width="110" DisplayMemberBinding="{Binding Action}" />
+                    <GridViewColumn Header="Where" Width="420" DisplayMemberBinding="{Binding What}" />
+                    <GridViewColumn Header="Gap" Width="60" DisplayMemberBinding="{Binding Gap}" />
+                    <GridViewColumn Width="70">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Zoom" Padding="6,0" ToolTip="Select and zoom to it in Revit"
+                                        Command="{Binding DataContext.ZoomCommand, RelativeSource={RelativeSource AncestorType=ListView}}"
+                                        CommandParameter="{Binding}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>

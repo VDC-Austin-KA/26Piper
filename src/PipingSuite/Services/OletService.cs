@@ -65,6 +65,16 @@ public sealed class OletService(Document doc, View view)
     /// <summary>Type that last placed successfully under "Auto"; tried first next time this session.</summary>
     private static ElementId? _lastWorkingAuto;
 
+    /// <summary>Whether <paramref name="e"/> is a tap/olet fitting, on a pipe or loose.</summary>
+    public static bool IsTap(Element e) => e is FamilyInstance { MEPModel: MechanicalFitting fitting } && TapTypes.Contains(fitting.PartType);
+
+    /// <summary>
+    /// A new olet of exactly <paramref name="symbolId"/> on <paramref name="main"/>, centred under
+    /// <paramref name="outlet"/> with its branch facing <paramref name="direction"/>. Runs inside the caller's transaction.
+    /// </summary>
+    public FamilyInstance PlaceOn(Pipe main, XYZ outlet, XYZ direction, double diameter, ElementId symbolId) =>
+        CreateOlet(main, MainLine(main).Project(outlet).XYZPoint, direction, diameter, symbolId, strict: true);
+
     /// <summary>The main pipe and open branch connector, when <paramref name="e"/> is an olet on a pipe.</summary>
     public static (Pipe Main, Connector Branch)? AsOlet(Element e)
     {
