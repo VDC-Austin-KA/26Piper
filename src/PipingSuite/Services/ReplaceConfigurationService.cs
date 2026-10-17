@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Plumbing;
 using PipingSuite.Core;
 
 namespace PipingSuite.Services;
@@ -9,9 +10,11 @@ namespace PipingSuite.Services;
 /// <summary>
 /// A branch off a header: its elements and the connector where it meets the header ("root"), which
 /// sits at <paramref name="Origin"/> facing back along <paramref name="Out"/> (away from the header).
+/// When the branch includes its olet (<paramref name="OletId"/>), the root is the olet's outlet instead
+/// and <paramref name="Header"/> is the pipe the olet sits on: the olet is replaced too, re-made on that pipe.
 /// </summary>
 public sealed record Branch(IReadOnlyList<Element> Elements, ElementId RootId, XYZ Origin, XYZ Out, double RootRadius,
-    Element? Header, string? SystemName)
+    Element? Header, string? SystemName, ElementId? OletId = null)
 {
     public IEnumerable<ElementId> Ids => Elements.Select(e => e.Id);
 }
@@ -71,10 +74,15 @@ public sealed class ReplaceConfigurationService(Document doc)
     /// </summary>
     public Transform? Fit(Source good, Branch bad)
     {
-        var goodIds = good.Elements.Select(e => e.Id).ToHashSet();
-        var goodConnectors = good.Elements.SelectMany(PhysicalConnectors).ToList();
-        var badPoints = bad.Elements.SelectMany(PhysicalConnectors).Select(c => c.Origin).ToList();
-        var roots = goodConnectors.Where(c => Math.Abs(Radius(c) - bad.RootRadius) < 1e-4).ToList();
+        // Olets are left out of the fit: theirs sit higher or lower on a different header size.
+        var olet = RootOlet(good.Elements);
+        var body = good.Elements.Where(e => e.Id != olet?.Id).ToList();
+        var goodIds = body.Select(e => e.Id).ToHashSet();
+        var goodConnectors = body.SelectMany(PhysicalConnectors).ToList();
+        var badPoints = bad.Elements.Where(e => e.Id != bad.OletId).SelectMany(PhysicalConnectors).Select(c => c.Origin).ToList();
+        var roots = olet is not null && Outlet(olet, body) is { } fed
+            ? [fed] // with its olet, the correct branch's header end is plain: what the olet feeds
+            : goodConnectors.Where(c => Math.Abs(Radius(c) - bad.RootRadius) < 1e-4).ToList();
         if (roots.Count == 0) return null;
 
         var badFrame = Frame(bad.Origin, bad.Out, 0);
@@ -120,6 +128,7 @@ public sealed class ReplaceConfigurationService(Document doc)
 
                 var found = PhysicalConnectors(candidate)
                     .Where(c => c.IsConnected && Math.Abs(Radius(c) - reference.RootRadius) < 1e-4)
+                    .Where(c => reference.OletId is null || Refs(c).Any(r => OletService.IsTap(r.Owner) && !taken.Contains(r.Owner.Id)))
                     .SelectMany(c => Turns.Select(turn => (Root: c, Move: Frame(c.Origin, c.CoordinateSystem.BasisZ.Negate(), turn).Multiply(frame.Inverse))))
                     .Where(h => h.Move.OfVector(XYZ.BasisZ).Z > SameDir) // up stays up: a branch that drops is not one that rises
                     .Select(h => (h.Root, h.Move, Map: Correspond(reference, root, candidate, h.Move, taken)))
@@ -128,8 +137,15 @@ public sealed class ReplaceConfigurationService(Document doc)
 
                 var elements = found.Map.Values.ToList();
                 var header = Refs(found.Root).Select(r => r.Owner).FirstOrDefault();
+                ElementId? oletId = null;
+                if (reference.OletId is not null && header is not null)
+                {
+                    elements.Add(header); // the olet goes with the branch; its header is the pipe it sits on
+                    oletId = header.Id;
+                    header = OletService.AsOlet(header)?.Main;
+                }
                 matches.Add((new Branch(elements, candidate.Id, found.Root.Origin, found.Root.CoordinateSystem.BasisZ.Negate(),
-                    reference.RootRadius, header, SystemName(candidate)), found.Move, p));
+                    reference.RootRadius, header, SystemName(candidate), oletId), found.Move, p));
                 taken.UnionWith(elements.Select(e => e.Id));
             }
         }
@@ -144,7 +160,7 @@ public sealed class ReplaceConfigurationService(Document doc)
     /// </summary>
     private static Dictionary<ElementId, Element>? Correspond(Branch reference, Element root, Element candidate, Transform move, HashSet<ElementId> taken)
     {
-        var inside = reference.Ids.ToHashSet();
+        var inside = reference.Ids.Where(id => id != reference.OletId).ToHashSet();
         var map = new Dictionary<ElementId, Element> { [root.Id] = candidate };
         var queue = new Queue<(Element B, Element C)>([(root, candidate)]);
         while (queue.TryDequeue(out var pair))
@@ -177,7 +193,7 @@ public sealed class ReplaceConfigurationService(Document doc)
                 }
             }
         }
-        return map.Count == reference.Elements.Count ? map : null;
+        return map.Count == inside.Count ? map : null;
     }
 
     /// <summary>
@@ -230,17 +246,34 @@ public sealed class ReplaceConfigurationService(Document doc)
         return new ReplaceResult(replaced, newIds, warnings);
     }
 
-    /// <summary>Deletes the old branch, copies the source into its pose, and remakes each outside connection it can.</summary>
+    /// <summary>
+    /// Deletes the old branch, copies the source into its pose, and remakes each outside connection it can.
+    /// With olets, the old one goes with its branch and a new one of the correct branch's olet type (else the
+    /// old type) is made on the same header pipe at the same spot; the new branch is nudged onto its outlet.
+    /// </summary>
     private List<Element> Place(Target target, Source source, List<string> warnings, string label)
     {
-        var links = ExternalLinks(target.Old.Elements).Select(l => (l.Outside.Owner.Id, At: l.Outside.Origin)).ToList();
-        doc.Delete(target.Old.Ids.ToList());
+        var old = target.Old;
+        var links = ExternalLinks(old.Elements)
+            .Where(l => l.Inside.Owner.Id != old.OletId) // the olet's seat on the header is re-made below, not reconnected
+            .Select(l => (l.Outside.Owner.Id, At: l.Outside.Origin)).ToList();
+        var main = old.OletId is not null ? old.Header as Pipe : null;
+        var sourceOlet = RootOlet(source.Elements);
+        var oletType = (sourceOlet as FamilyInstance)?.Symbol.Id
+                       ?? (old.OletId is { } o ? (doc.GetElement(o) as FamilyInstance)?.Symbol.Id : null);
+        doc.Delete(old.Ids.ToList());
+
+        // New olet first, while the spot is clear (Revit builds it off a temporary branch pipe).
+        var olet = main is not null && oletType is not null
+            ? new OletService(doc, doc.ActiveView).PlaceOn(main, old.Origin, old.Out, old.RootRadius * 2, oletType)
+            : null;
 
         // Copy so a reference point lands where the pose sends it, then turn about that point.
-        var pivot = source.Elements.SelectMany(PhysicalConnectors).First().Origin;
+        var body = source.Elements.Where(e => e.Id != sourceOlet?.Id).ToList();
+        var pivot = body.SelectMany(PhysicalConnectors).First().Origin;
         var landed = target.Place.OfPoint(pivot);
         var copied = ElementTransformUtils.CopyElements(doc,
-            source.AssemblyId is { } a ? [a] : source.Elements.Select(e => e.Id).ToList(), landed - pivot);
+            source.AssemblyId is { } a ? [a] : body.Select(e => e.Id).ToList(), landed - pivot);
         var (axis, angle) = RotationOf(target.Place);
         if (angle > 1e-9) ElementTransformUtils.RotateElements(doc, copied, Line.CreateUnbound(landed, axis), angle);
         doc.Regenerate();
@@ -248,6 +281,29 @@ public sealed class ReplaceConfigurationService(Document doc)
         var placed = copied.Select(doc.GetElement).ToList();
         var members = placed.OfType<AssemblyInstance>().SelectMany(ai => ai.GetMemberIds()).Select(doc.GetElement);
         var all = placed.Concat(members).DistinctBy(e => e.Id).ToList();
+        if (sourceOlet is not null && source.AssemblyId is not null && RootOlet(all) is { } copiedOlet)
+        {
+            doc.Delete(copiedOlet.Id); // the assembly brought its olet along; a real one is made on the header instead
+            all.Remove(copiedOlet);
+        }
+
+        if (olet is not null)
+        {
+            var outlet = OletService.AsOlet(olet)?.Branch ?? throw new InvalidOperationException("The new olet has no outlet.");
+            var start = all.SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(old.Origin))
+                        ?? throw new InvalidOperationException("The correct branch has no open end to put on the olet.");
+            var nudge = outlet.Origin - start.Origin; // a different olet type or header size moves the outlet a little
+            if (nudge.GetLength() > Tol * 6)
+                warnings.Add($"{label}: the new olet's outlet is {Format(nudge)} from the branch; check it.");
+            if (nudge.GetLength() > 1e-6)
+            {
+                ElementTransformUtils.MoveElements(doc, copied, nudge);
+                doc.Regenerate();
+                start = all.SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(outlet.Origin))!;
+            }
+            start.ConnectTo(outlet);
+            all.Add(olet);
+        }
 
         foreach (var (ownerId, at) in links)
         {
@@ -285,8 +341,35 @@ public sealed class ReplaceConfigurationService(Document doc)
             .ThenByDescending(l => MaxRadius(l.Outside.Owner))
             .FirstOrDefault();
         if (link.Inside is null) return null;
-        return new Branch(elements, link.Inside.Owner.Id, link.Inside.Origin, link.Inside.CoordinateSystem.BasisZ.Negate(),
-            Radius(link.Inside), link.Outside.Owner, SystemName(link.Inside.Owner));
+
+        var owner = link.Inside.Owner;
+        if (OletService.IsTap(owner) && Outlet(owner, elements) is { } fed) // the olet came with the branch: measure from its outlet
+            return new Branch(elements, fed.Owner.Id, fed.Origin, fed.CoordinateSystem.BasisZ.Negate(), Radius(fed),
+                link.Outside.Owner, SystemName(fed.Owner), owner.Id);
+        return new Branch(elements, owner.Id, link.Inside.Origin, link.Inside.CoordinateSystem.BasisZ.Negate(),
+            Radius(link.Inside), link.Outside.Owner, SystemName(owner));
+    }
+
+    /// <summary>The connector an olet's outlet feeds, on one of <paramref name="elements"/>.</summary>
+    private static Connector? Outlet(Element olet, IReadOnlyCollection<Element> elements)
+    {
+        var ids = elements.Select(e => e.Id).ToHashSet();
+        return PhysicalConnectors(olet).Where(c => c.IsConnected).SelectMany(Refs)
+            .FirstOrDefault(r => r.Owner.Id != olet.Id && ids.Contains(r.Owner.Id) && r.ConnectorType == ConnectorType.End);
+    }
+
+    /// <summary>
+    /// The olet a branch starts from: a tap among <paramref name="elements"/> that isn't sitting on one of their
+    /// own pipes (those are gauge/vent olets along the branch). One on an outside pipe wins over a loose one.
+    /// </summary>
+    private static Element? RootOlet(IReadOnlyCollection<Element> elements)
+    {
+        var ids = elements.Select(e => e.Id).ToHashSet();
+        IEnumerable<Connector> Seats(Element t) => PhysicalConnectors(t).SelectMany(Refs).Where(r => r.ConnectorType == ConnectorType.Curve);
+        return elements.Where(OletService.IsTap)
+            .Where(t => !Seats(t).Any(r => ids.Contains(r.Owner.Id)))
+            .OrderByDescending(t => Seats(t).Any())
+            .FirstOrDefault();
     }
 
     /// <summary>Frame at a root: X out of the header, Y world-up turned <paramref name="turn"/> about X (world X for a vertical branch).</summary>

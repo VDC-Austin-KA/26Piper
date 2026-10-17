@@ -32,13 +32,13 @@ public sealed class ReplaceConfigurationCommand : IExternalCommand
             var badElements = uiDoc.Selection.GetElementIds().Select(doc.GetElement).Where(PipingElements.IsPiping).ToList();
             if (badElements.Count == 0)
                 badElements = Pick(uiDoc, new PipingSelectionFilter(),
-                    "Select one or more INCORRECT branches (pipes, fittings, valves; not the header tees/olets), then Finish");
+                    "Select one or more INCORRECT branches (pipes, fittings, valves; include the olet to replace it too), then Finish");
             var picked = service.Split(badElements);
             if (picked.Count == 0) return Fail("None of the selected branches is connected to a header.");
 
             // 2. The correct branch or assembly. Its header end is found by fitting it over the wrong branch.
             var goodPick = Pick(uiDoc, new PredicateSelectionFilter(e => PipingElements.IsPiping(e) || e is AssemblyInstance),
-                "Select the CORRECT branch or its assembly, then Finish");
+                "Select the CORRECT branch (with its olet if it has one) or its assembly, then Finish");
             var assemblies = goodPick.OfType<AssemblyInstance>().ToList();
             var good = new Source(
                 goodPick.Where(e => e is not AssemblyInstance)
