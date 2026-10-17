@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
-using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PipingSuite.Services;
@@ -33,8 +31,7 @@ public sealed partial class DisconnectItem(Disconnect item) : ObservableObject
         DisconnectKind.Transition => "Add transition",
         DisconnectKind.Takeoff => "Add takeoff",
         DisconnectKind.Olet => "Re-attach olet",
-        DisconnectKind.Review => "Check",
-        _ => "Open end",
+        _ => "Check",
     };
 
     [ObservableProperty] private bool _isChecked = item.CanFix;
@@ -48,22 +45,16 @@ public sealed partial class DisconnectsViewModel : ObservableObject
     {
         Scope = scope;
         _host = host;
-        ItemsView = CollectionViewSource.GetDefaultView(Items);
-        ItemsView.Filter = o => ShowOpenEnds || ((DisconnectItem)o).Item.Kind != DisconnectKind.Open;
         Scan();
     }
 
     public string Scope { get; }
     public ObservableCollection<DisconnectItem> Items { get; } = [];
-    public ICollectionView ItemsView { get; }
 
     /// <summary>How far apart (inches) two ends may be and still count as touching.</summary>
     [ObservableProperty] private string _toleranceInches = "0.125";
     [ObservableProperty] private bool _sameSystemType = true;
-    [ObservableProperty] private bool _showOpenEnds = true;
     [ObservableProperty] private string _status = string.Empty;
-
-    partial void OnShowOpenEndsChanged(bool value) => ItemsView.Refresh();
 
     [RelayCommand]
     private void Scan()
@@ -76,8 +67,7 @@ public sealed partial class DisconnectsViewModel : ObservableObject
         Items.Clear();
         foreach (var d in _host.Scan(inches / 12, SameSystemType)) Items.Add(new DisconnectItem(d));
         int fixable = Items.Count(i => i.CanFix);
-        Status = $"{fixable} can be connected, {Items.Count(i => i.Item.Kind == DisconnectKind.Review)} to check, " +
-                 $"{Items.Count(i => i.Item.Kind == DisconnectKind.Open)} open end(s).";
+        Status = Items.Count == 0 ? "No disconnects in the selection." : $"{fixable} can be connected, {Items.Count - fixable} to check.";
     }
 
     [RelayCommand]

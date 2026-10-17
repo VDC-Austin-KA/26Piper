@@ -49,36 +49,38 @@ public sealed class ReplaceConfigurationCommand : IExternalCommand
             if (good.Elements.Count == 0) return Fail("The correct selection has no piping in it.");
             if (badElements.Any(b => goodIds.Contains(b.Id))) return Fail("The correct branch overlaps an incorrect one.");
 
-            // 3. Everything laid out like the picked branches, on any header section.
+            // 3. Every branch with the same route (legs turning the same way at the same sizes), on any header.
+            var (matches, report) = service.FindMatches(picked, goodIds);
             var targets = new List<Target>();
-            var fits = new List<Transform>();
-            foreach (var b in picked)
+            var misfits = new List<string>();
+            void Add(Branch b)
             {
-                var fit = service.Fit(good, b);
-                if (fit is null) return Fail("The correct branch has no end the size of the incorrect branch's header connection.");
-                fits.Add(fit);
-                targets.Add(new Target(b, fit));
+                var (pose, why) = service.Fit(good, b);
+                if (pose is not null) targets.Add(new Target(b, pose));
+                else misfits.Add($"Branch [{b.RootId.Value}]: {why}");
             }
-            foreach (var (match, fromPicked, p) in service.FindMatches(picked, goodIds))
-                targets.Add(new Target(match, fromPicked.Multiply(fits[p])));
+            foreach (var b in picked.Concat(matches)) Add(b);
+            if (targets.Count == 0)
+                return Fail($"The correct branch can't be fitted onto the picked one: {misfits.FirstOrDefault()}\n\nMatching {report}.");
 
             // 4. Review in the model: the user can orbit/zoom, Ctrl+click to add branches, Shift+click to drop them.
             var all = targets.SelectMany(t => t.Old.Ids).ToList();
             uiDoc.ShowElements(all);
             var reviewed = uiDoc.Selection.PickObjects(ObjectType.Element, new PipingSelectionFilter(),
-                    $"{targets.Count} branch(es) will be replaced: Shift+click to drop one, Ctrl+click to add one, then Finish",
+                    $"{targets.Count} branch(es) will be replaced ({report}): Shift+click to drop one, Ctrl+click to add one, then Finish",
                     all.Select(id => new Reference(doc.GetElement(id))).ToList())
                 .Select(r => r.ElementId).ToHashSet();
             targets = targets.Where(t => reviewed.Contains(t.Old.RootId)).ToList();
             var known = targets.SelectMany(t => t.Old.Ids).ToHashSet();
             foreach (var b in service.Split(reviewed.Where(id => !known.Contains(id) && !goodIds.Contains(id)).Select(doc.GetElement).ToList()))
-                if (service.Fit(good, b) is { } fit) targets.Add(new Target(b, fit));
+                Add(b);
             if (targets.Count == 0) return Result.Cancelled;
 
             // 5. Numbering, then replace.
             var headers = targets.Select(t => t.Old.Header?.Id).Distinct().Count();
             var vm = new ReplaceConfigurationViewModel(
-                $"Replace {targets.Count} branch(es) on {headers} header connection(s) with the correct branch.",
+                $"Replace {targets.Count} branch(es) on {headers} header connection(s) with the correct branch, each leg stretched to fit." +
+                $"\nMatching {report}." + (misfits.Count > 0 ? $"\n{misfits.Count} matched branch(es) skipped: {misfits[0]}" : string.Empty),
                 SourceValues(doc, good));
             if (!WindowHelper.ShowModal(new ReplaceConfigurationWindow(vm), commandData.Application)) return Result.Cancelled;
 
