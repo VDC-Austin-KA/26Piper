@@ -14,8 +14,8 @@ namespace PipingSuite.Commands;
 
 /// <summary>
 /// Pick one or more wrongly built branches and a correctly built one (or its assembly); every branch laid
-/// out like them, on any header section, is swapped for the correct one on its own header, reconnected,
-/// and optionally numbered.
+/// out like them, on any header section, is found and shown for review, then swapped for the correct one
+/// on its own header, reconnected, and optionally numbered.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 public sealed class ReplaceConfigurationCommand : IExternalCommand
@@ -36,36 +36,52 @@ public sealed class ReplaceConfigurationCommand : IExternalCommand
             var picked = service.Split(badElements);
             if (picked.Count == 0) return Fail("None of the selected branches is connected to a header.");
 
-            // 2. The correct branch or assembly, and its header end.
+            // 2. The correct branch or assembly. Its header end is found by fitting it over the wrong branch.
             var goodPick = Pick(uiDoc, new PredicateSelectionFilter(e => PipingElements.IsPiping(e) || e is AssemblyInstance),
                 "Select the CORRECT branch or its assembly, then Finish");
             var assemblies = goodPick.OfType<AssemblyInstance>().ToList();
-            var goodElements = goodPick.Where(e => e is not AssemblyInstance)
-                .Concat(assemblies.SelectMany(a => a.GetMemberIds()).Select(doc.GetElement))
-                .DistinctBy(e => e.Id).ToList();
-            if (goodElements.Any(e => badElements.Any(b => b.Id == e.Id)))
-                return Fail("The correct branch overlaps an incorrect one.");
-            var assemblyId = assemblies.Count == 1 && goodPick.Count == 1 ? assemblies[0].Id : null;
-            var good = service.Describe(goodElements, assemblyId: assemblyId, rootRadius: picked[0].RootRadius)
-                       ?? service.Describe(goodElements, rootNear: uiDoc.Selection.PickObject(ObjectType.PointOnElement,
-                           "Click the end of the CORRECT branch that connects to the header").GlobalPoint, assemblyId: assemblyId)!;
+            var good = new Source(
+                goodPick.Where(e => e is not AssemblyInstance)
+                    .Concat(assemblies.SelectMany(a => a.GetMemberIds()).Select(doc.GetElement))
+                    .Where(PipingElements.IsPiping).DistinctBy(e => e.Id).ToList(),
+                assemblies.Count == 1 && goodPick.Count == 1 ? assemblies[0].Id : null);
+            var goodIds = good.Elements.Select(e => e.Id).ToHashSet();
+            if (good.Elements.Count == 0) return Fail("The correct selection has no piping in it.");
+            if (badElements.Any(b => goodIds.Contains(b.Id))) return Fail("The correct branch overlaps an incorrect one.");
 
-            // 3. Everything laid out like them on any header section, shown highlighted behind the dialog.
-            var matches = service.FindMatches(picked, goodElements.Select(e => e.Id).ToList());
-            uiDoc.Selection.SetElementIds(picked.Concat(matches).SelectMany(b => b.Ids).ToList());
+            // 3. Everything laid out like the picked branches, on any header section.
+            var targets = new List<Target>();
+            var fits = new List<Transform>();
+            foreach (var b in picked)
+            {
+                var fit = service.Fit(good, b);
+                if (fit is null) return Fail("The correct branch has no end the size of the incorrect branch's header connection.");
+                fits.Add(fit);
+                targets.Add(new Target(b, fit));
+            }
+            foreach (var (match, fromPicked, p) in service.FindMatches(picked, goodIds))
+                targets.Add(new Target(match, fromPicked.Multiply(fits[p])));
 
-            var systems = picked.Select(b => b.SystemName ?? "(no system)").Distinct().ToList();
-            int sameSystem = matches.Count(m => systems.Contains(m.SystemName ?? "(no system)"));
-            var headers = picked.Concat(matches).Select(b => b.Header?.Id).Distinct().Count();
+            // 4. Review in the model: the user can orbit/zoom, Ctrl+click to add branches, Shift+click to drop them.
+            var all = targets.SelectMany(t => t.Old.Ids).ToList();
+            uiDoc.ShowElements(all);
+            var reviewed = uiDoc.Selection.PickObjects(ObjectType.Element, new PipingSelectionFilter(),
+                    $"{targets.Count} branch(es) will be replaced: Shift+click to drop one, Ctrl+click to add one, then Finish",
+                    all.Select(id => new Reference(doc.GetElement(id))).ToList())
+                .Select(r => r.ElementId).ToHashSet();
+            targets = targets.Where(t => reviewed.Contains(t.Old.RootId)).ToList();
+            var known = targets.SelectMany(t => t.Old.Ids).ToHashSet();
+            foreach (var b in service.Split(reviewed.Where(id => !known.Contains(id) && !goodIds.Contains(id)).Select(doc.GetElement).ToList()))
+                if (service.Fit(good, b) is { } fit) targets.Add(new Target(b, fit));
+            if (targets.Count == 0) return Result.Cancelled;
+
+            // 5. Numbering, then replace.
+            var headers = targets.Select(t => t.Old.Header?.Id).Distinct().Count();
             var vm = new ReplaceConfigurationViewModel(
-                $"Picked {picked.Count} branch(es); found {matches.Count} more laid out the same, on {headers} header connection(s) in total.",
-                matches.Count, $"Only branches on {string.Join(", ", systems)} ({sameSystem} of the {matches.Count} matches)",
-                SourceValues(doc, good, goodElements));
+                $"Replace {targets.Count} branch(es) on {headers} header connection(s) with the correct branch.",
+                SourceValues(doc, good));
             if (!WindowHelper.ShowModal(new ReplaceConfigurationWindow(vm), commandData.Application)) return Result.Cancelled;
 
-            var targets = picked
-                .Concat(vm.ReplaceAll ? matches.Where(m => !vm.SameSystemOnly || systems.Contains(m.SystemName ?? "(no system)")) : [])
-                .ToList();
             var result = service.Replace(targets, good, vm.ToNumbering());
             uiDoc.Selection.SetElementIds(result.NewIds.ToList());
 
@@ -98,10 +114,10 @@ public sealed class ReplaceConfigurationCommand : IExternalCommand
         uiDoc.Selection.PickObjects(ObjectType.Element, filter, prompt).Select(uiDoc.Document.GetElement).ToList();
 
     /// <summary>Writable text/integer parameters on the correct branch (and its assembly), with their first value found.</summary>
-    private static Dictionary<string, string> SourceValues(Document doc, Branch good, IEnumerable<Element> elements)
+    private static Dictionary<string, string> SourceValues(Document doc, Source good)
     {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var owners = good.AssemblyId is { } a ? elements.Prepend(doc.GetElement(a)) : elements;
+        var owners = good.AssemblyId is { } a ? good.Elements.Prepend(doc.GetElement(a)) : good.Elements;
         foreach (var e in owners)
         foreach (Parameter p in e.Parameters)
         {

@@ -7,15 +7,20 @@ using PipingSuite.Core;
 namespace PipingSuite.Services;
 
 /// <summary>
-/// A branch off a header: its elements and the connector where it meets the header ("root").
-/// <paramref name="Out"/> points away from the header; <paramref name="Across"/> is the direction the
-/// branch heads off sideways (towards its far end), or null when it runs straight out.
+/// A branch off a header: its elements and the connector where it meets the header ("root"), which
+/// sits at <paramref name="Origin"/> facing back along <paramref name="Out"/> (away from the header).
 /// </summary>
-public sealed record Branch(IReadOnlyList<Element> Elements, ElementId RootId, XYZ Origin, XYZ Out, XYZ? Across,
-    double RootRadius, Element? Header, string? SystemName, ElementId? AssemblyId = null)
+public sealed record Branch(IReadOnlyList<Element> Elements, ElementId RootId, XYZ Origin, XYZ Out, double RootRadius,
+    Element? Header, string? SystemName)
 {
     public IEnumerable<ElementId> Ids => Elements.Select(e => e.Id);
 }
+
+/// <summary>The correctly built branch: loose elements, or the members of one assembly (copied as the assembly).</summary>
+public sealed record Source(IReadOnlyList<Element> Elements, ElementId? AssemblyId);
+
+/// <summary>An old branch and where the source lands in its place (source pose → this branch's pose).</summary>
+public sealed record Target(Branch Old, Transform Place);
 
 /// <summary>Numbering for each placement: <paramref name="Start"/> on the first, stepped once per placement after.</summary>
 public sealed record Numbering(string Parameter, IncrementMode Mode, string Start);
@@ -23,14 +28,23 @@ public sealed record Numbering(string Parameter, IncrementMode Mode, string Star
 public sealed record ReplaceResult(int Replaced, IReadOnlyList<ElementId> NewIds, IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// Replace Configuration: finds every branch laid out like a picked one on any header section (same
-/// system type, element types and sizes at the same spots relative to where it leaves its header) and
-/// swaps each for a correctly built branch or assembly, turned to face the way the old one did, then
-/// reconnects it to its own header and to whatever else the old branch was connected to.
+/// Replace Configuration. A branch matches a picked one when the two can be walked side by side from
+/// their header connections, element for element: same type and sizes, every connector at the same spot
+/// and facing the same way once the picked branch is moved onto the candidate's header connection and
+/// turned to face out of it (keeping up as up, so the other side of a header or another header direction
+/// matches, but a branch that drops never matches one that rises). Only the picked branch's elements are compared, so whatever a branch runs on into
+/// (equipment, a rack manifold) doesn't matter, and the header can be any section, size or system.
+/// Each match is then swapped for the correct branch, placed the way it best fits the picked one.
 /// </summary>
 public sealed class ReplaceConfigurationService(Document doc)
 {
-    private const double Tol = 0.02; // ft (~1/4"): layout match and reconnect distance
+    private const double Tol = 0.04;     // ft (~1/2"): connector positions that count as the same
+    private const double FitTol = 0.1;   // ft: looser, for fitting the correct branch over the old one
+    private const double SameDir = 0.99; // cosine: connector directions that count as the same
+
+    /// <summary>Turns about the root axis to try, nearest "keeps up as up" first (0, ±15°, ±30° … 180°).</summary>
+    private static readonly double[] Turns =
+        [0, .. Enumerable.Range(1, 11).SelectMany(k => new[] { k, -k }).Select(k => k * Math.PI / 12), Math.PI];
 
     /// <summary>
     /// Splits a selection into its separate branches (connected pieces), each with its header found
@@ -51,86 +65,127 @@ public sealed class ReplaceConfigurationService(Document doc)
     }
 
     /// <summary>
-    /// A branch whose header is its outside connection to piping with the biggest connectors (the header
-    /// tee/olet), so equipment, valves or a smaller pipe at the far end are never taken for the header.
+    /// How to lay the correct branch over <paramref name="bad"/>: tries each of its ends of the bad root's
+    /// size as the header end, at each upright turn, and keeps the pose where most of its connectors land on
+    /// the bad branch's (ties: an end already on a header, then the smallest turn). Null if it has no such end.
     /// </summary>
-    private static Branch? AutoDescribe(IReadOnlyList<Element> elements)
+    public Transform? Fit(Source good, Branch bad)
     {
-        var link = ExternalLinks(elements)
-            .OrderByDescending(l => PipingElements.IsPiping(l.Outside.Owner))
-            .ThenByDescending(l => MaxRadius(l.Outside.Owner))
-            .FirstOrDefault();
-        return link.Inside is null ? null : Build(elements, link.Inside, link.Outside.Owner, null);
-    }
+        var goodIds = good.Elements.Select(e => e.Id).ToHashSet();
+        var goodConnectors = good.Elements.SelectMany(PhysicalConnectors).ToList();
+        var badPoints = bad.Elements.SelectMany(PhysicalConnectors).Select(c => c.Origin).ToList();
+        var roots = goodConnectors.Where(c => Math.Abs(Radius(c) - bad.RootRadius) < 1e-4).ToList();
+        if (roots.Count == 0) return null;
 
-    /// <summary>
-    /// Describes the correct branch. The root is its one outside connection of the picked branches' root
-    /// size (a loose branch may be connected at its far end instead), or the connector nearest
-    /// <paramref name="rootNear"/>; null when that is ambiguous so the caller can ask.
-    /// </summary>
-    public Branch? Describe(IReadOnlyList<Element> elements, XYZ? rootNear = null, ElementId? assemblyId = null, double? rootRadius = null)
-    {
-        var links = ExternalLinks(elements)
-            .Where(l => rootRadius is null || Math.Abs(Radius(l.Inside) - rootRadius.Value) < 1e-4)
-            .ToList();
-        if (rootNear is null && links.Count == 1) return Build(elements, links[0].Inside, links[0].Outside.Owner, assemblyId);
-        if (rootNear is null) return null;
+        var badFrame = Frame(bad.Origin, bad.Out, 0);
+        var poses = roots.SelectMany(root => Turns.Select(turn => (Root: root,
+            Pose: badFrame.Multiply(Frame(root.Origin, root.CoordinateSystem.BasisZ.Negate(), turn).Inverse)))).ToList();
+        // Upright poses only, when there are any: the copy then only turns about vertical.
+        if (poses.Any(p => p.Pose.OfVector(XYZ.BasisZ).Z > SameDir)) poses = poses.Where(p => p.Pose.OfVector(XYZ.BasisZ).Z > SameDir).ToList();
 
-        var root = elements.SelectMany(PhysicalConnectors).MinBy(c => c.Origin.DistanceTo(rootNear))!;
-        var header = ExternalLinks(elements).FirstOrDefault(l => l.Inside.Origin.IsAlmostEqualTo(root.Origin)).Outside?.Owner;
-        return Build(elements, root, header, assemblyId);
-    }
-
-    /// <summary>
-    /// Every other branch laid out like one of <paramref name="picked"/>, on any header section: same
-    /// piping system type (not system name: separate header sections are usually separate systems), off
-    /// a header element of the same category (tee/olet), with the same layout. Each match's own header
-    /// is whatever it is connected to there, so it can be a different size or fitting type.
-    /// </summary>
-    public List<Branch> FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude)
-    {
-        var matches = new List<Branch>();
-        var taken = new HashSet<ElementId>(exclude.Concat(picked.SelectMany(b => b.Ids)));
-        var references = picked.Where((b, i) => b.Header is not null && !picked.Take(i).Any(p => SameLayout(p, b))).ToList();
-
-        foreach (var reference in references)
+        (int Score, Transform Pose)? best = null;
+        foreach (var (root, pose) in poses)
         {
-            var rootElement = doc.GetElement(reference.RootId);
-            var systemType = SystemType(rootElement);
-            var headerCategory = reference.Header!.Category?.Id;
+            bool onHeader = root.IsConnected && Refs(root).Any(r => !goodIds.Contains(r.Owner.Id));
+            int score = goodConnectors.Count(c => badPoints.Any(p => pose.OfPoint(c.Origin).DistanceTo(p) < FitTol)) * 2
+                        + (onHeader ? 1 : 0);
+            if (best is null || score > best.Value.Score) best = (score, pose);
+        }
+        return best!.Value.Pose;
+    }
+
+    /// <summary>
+    /// Every other branch laid out like one of <paramref name="picked"/>, with the transform taking the
+    /// picked branch onto it. Candidates start at elements like the picked root (same type, sizes and
+    /// piping system type) whose same-size connector is connected to something: their header.
+    /// </summary>
+    public List<(Branch Match, Transform FromPicked, int Picked)> FindMatches(IReadOnlyList<Branch> picked, IReadOnlyCollection<ElementId> exclude)
+    {
+        var matches = new List<(Branch, Transform, int)>();
+        var taken = new HashSet<ElementId>(exclude.Concat(picked.SelectMany(b => b.Ids)));
+
+        for (int p = 0; p < picked.Count; p++)
+        {
+            var reference = picked[p];
+            var root = doc.GetElement(reference.RootId);
+            var key = Key(root);
+            var systemType = SystemType(root);
+            var frame = Frame(reference.Origin, reference.Out, 0);
             var sameType = new ElementParameterFilter(ParameterFilterRuleFactory.CreateEqualsRule(
-                new ElementId(BuiltInParameter.ELEM_TYPE_PARAM), rootElement.GetTypeId()));
+                new ElementId(BuiltInParameter.ELEM_TYPE_PARAM), root.GetTypeId()));
 
             foreach (var candidate in new FilteredElementCollector(doc).WhereElementIsNotElementType().WherePasses(sameType))
             {
-                if (taken.Contains(candidate.Id) || SystemType(candidate) != systemType) continue;
-                // Try the end facing the biggest neighbour first: that is the header side.
-                var ends = PhysicalConnectors(candidate).Where(c => c.IsConnected)
-                    .Select(c => (Connector: c, Header: Refs(c).Select(r => r.Owner).FirstOrDefault(o => o.Id != candidate.Id)))
-                    .Where(x => x.Header is not null && x.Header.Category?.Id == headerCategory)
-                    .OrderByDescending(x => MaxRadius(x.Header!));
-                foreach (var (c, header) in ends)
-                {
-                    if (Grow(candidate, header!.Id, reference.Elements.Count) is not { } elements) continue;
-                    if (elements.Any(e => taken.Contains(e.Id))) continue;
+                if (taken.Contains(candidate.Id) || Key(candidate) != key || SystemType(candidate) != systemType) continue;
 
-                    var branch = Build(elements, c, header, null);
-                    if (!SameLayout(reference, branch)) continue;
-                    matches.Add(branch);
-                    taken.UnionWith(branch.Ids);
-                    break;
-                }
+                var found = PhysicalConnectors(candidate)
+                    .Where(c => c.IsConnected && Math.Abs(Radius(c) - reference.RootRadius) < 1e-4)
+                    .SelectMany(c => Turns.Select(turn => (Root: c, Move: Frame(c.Origin, c.CoordinateSystem.BasisZ.Negate(), turn).Multiply(frame.Inverse))))
+                    .Where(h => h.Move.OfVector(XYZ.BasisZ).Z > SameDir) // up stays up: a branch that drops is not one that rises
+                    .Select(h => (h.Root, h.Move, Map: Correspond(reference, root, candidate, h.Move, taken)))
+                    .FirstOrDefault(h => h.Map is not null && !Refs(h.Root).Any(r => h.Map.Values.Any(e => e.Id == r.Owner.Id)));
+                if (found.Map is null) continue;
+
+                var elements = found.Map.Values.ToList();
+                var header = Refs(found.Root).Select(r => r.Owner).FirstOrDefault();
+                matches.Add((new Branch(elements, candidate.Id, found.Root.Origin, found.Root.CoordinateSystem.BasisZ.Negate(),
+                    reference.RootRadius, header, SystemName(candidate)), found.Move, p));
+                taken.UnionWith(elements.Select(e => e.Id));
             }
         }
         return matches;
     }
 
     /// <summary>
+    /// Walks the picked branch and a candidate side by side from their roots. Every connector of each picked
+    /// element must have a twin on the candidate element at <paramref name="move"/>'s image of it, facing the
+    /// same way, and neighbours inside the picked branch must have twins of the same kind there. Returns
+    /// picked element id → candidate element, or null at the first difference.
+    /// </summary>
+    private static Dictionary<ElementId, Element>? Correspond(Branch reference, Element root, Element candidate, Transform move, HashSet<ElementId> taken)
+    {
+        var inside = reference.Ids.ToHashSet();
+        var map = new Dictionary<ElementId, Element> { [root.Id] = candidate };
+        var queue = new Queue<(Element B, Element C)>([(root, candidate)]);
+        while (queue.TryDequeue(out var pair))
+        {
+            var (b, c) = pair;
+            var mine = PhysicalConnectors(b).ToList();
+            var theirs = PhysicalConnectors(c).ToList();
+            if (mine.Count != theirs.Count) return null;
+
+            foreach (var cb in mine)
+            {
+                var at = move.OfPoint(cb.Origin);
+                var facing = move.OfVector(cb.CoordinateSystem.BasisZ);
+                var cc = theirs.FirstOrDefault(x => x.Origin.DistanceTo(at) < Tol && x.CoordinateSystem.BasisZ.DotProduct(facing) > SameDir);
+                if (cc is null) return null;
+                if (!cb.IsConnected) continue;
+
+                foreach (var nb in Refs(cb).Select(r => r.Owner).Where(o => o.Id != b.Id && inside.Contains(o.Id)))
+                {
+                    var key = Key(nb);
+                    var nc = cc.IsConnected ? Refs(cc).Select(r => r.Owner).FirstOrDefault(o => o.Id != c.Id && Key(o) == key) : null;
+                    if (nc is null || taken.Contains(nc.Id)) return null;
+                    if (map.TryGetValue(nb.Id, out var seen))
+                    {
+                        if (seen.Id != nc.Id) return null;
+                        continue;
+                    }
+                    map[nb.Id] = nc;
+                    queue.Enqueue((nb, nc));
+                }
+            }
+        }
+        return map.Count == reference.Elements.Count ? map : null;
+    }
+
+    /// <summary>
     /// Replaces each target with a copy of <paramref name="source"/>, one transaction per placement inside a
     /// group (a placement that fails rolls back alone and leaves the old branch in place). Placements run
-    /// along the header, lowest coordinate first, which is also the numbering order.
+    /// along the direction the branches spread out most, lowest first, which is also the numbering order.
     /// </summary>
-    public ReplaceResult Replace(IReadOnlyList<Branch> targets, Branch source, Numbering? numbering)
+    public ReplaceResult Replace(IReadOnlyList<Target> targets, Source source, Numbering? numbering)
     {
         var warnings = new List<string>();
         var newIds = new List<ElementId>();
@@ -142,8 +197,10 @@ public sealed class ReplaceConfigurationService(Document doc)
         for (int i = 0; i < ordered.Count; i++)
         {
             var target = ordered[i];
-            var label = $"Branch [{target.RootId.Value}]";
+            var label = $"Branch [{target.Old.RootId.Value}]";
+            var failures = new Failures();
             using var t = new Transaction(doc, "Replace Configuration - placement");
+            t.SetFailureHandlingOptions(t.GetFailureHandlingOptions().SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
             t.Start();
             try
             {
@@ -151,12 +208,12 @@ public sealed class ReplaceConfigurationService(Document doc)
                 if (numbering is not null)
                 {
                     var value = ValueSequence.Step(numbering.Start, numbering.Mode, i);
-                    int set = placed.Count(e => SetValue(e, numbering.Parameter, value));
-                    if (set == 0) warnings.Add($"{label}: no element has a writable \"{numbering.Parameter}\".");
+                    if (placed.Count(e => SetValue(e, numbering.Parameter, value)) == 0)
+                        warnings.Add($"{label}: no element has a writable \"{numbering.Parameter}\".");
                 }
                 if (t.Commit() != TransactionStatus.Committed)
                 {
-                    warnings.Add($"{label}: Revit rejected the change; the old branch was kept.");
+                    warnings.Add($"{label}: Revit rejected it ({string.Join("; ", failures.Errors.DefaultIfEmpty("no reason given"))}); the old branch was kept.");
                     continue;
                 }
                 newIds.AddRange(placed.Select(e => e.Id));
@@ -173,19 +230,19 @@ public sealed class ReplaceConfigurationService(Document doc)
         return new ReplaceResult(replaced, newIds, warnings);
     }
 
-    /// <summary>Deletes the target, copies the source onto its root facing its way, and reconnects every outside link.</summary>
-    private List<Element> Place(Branch target, Branch source, List<string> warnings, string label)
+    /// <summary>Deletes the old branch, copies the source into its pose, and remakes each outside connection it can.</summary>
+    private List<Element> Place(Target target, Source source, List<string> warnings, string label)
     {
-        var links = ExternalLinks(target.Elements).Select(l => (l.Outside.Owner.Id, At: l.Outside.Origin)).ToList();
-        var (fs, ft) = Frames(source, target);
-        var move = ft.Multiply(fs.Inverse);
+        var links = ExternalLinks(target.Old.Elements).Select(l => (l.Outside.Owner.Id, At: l.Outside.Origin)).ToList();
+        doc.Delete(target.Old.Ids.ToList());
 
-        doc.Delete(target.Ids.ToList());
-
+        // Copy so a reference point lands where the pose sends it, then turn about that point.
+        var pivot = source.Elements.SelectMany(PhysicalConnectors).First().Origin;
+        var landed = target.Place.OfPoint(pivot);
         var copied = ElementTransformUtils.CopyElements(doc,
-            source.AssemblyId is { } a ? [a] : source.Ids.ToList(), target.Origin - source.Origin);
-        if (RotationOf(move) is var (axis, angle) && angle > 1e-9)
-            ElementTransformUtils.RotateElements(doc, copied, Line.CreateUnbound(target.Origin, axis), angle);
+            source.AssemblyId is { } a ? [a] : source.Elements.Select(e => e.Id).ToList(), landed - pivot);
+        var (axis, angle) = RotationOf(target.Place);
+        if (angle > 1e-9) ElementTransformUtils.RotateElements(doc, copied, Line.CreateUnbound(landed, axis), angle);
         doc.Regenerate();
 
         var placed = copied.Select(doc.GetElement).ToList();
@@ -200,65 +257,49 @@ public sealed class ReplaceConfigurationService(Document doc)
             var inside = all.SelectMany(PhysicalConnectors).Where(c => !c.IsConnected).MinBy(c => c.Origin.DistanceTo(at));
             if (outside is null || inside is null || inside.Origin.DistanceTo(at) > Tol || outside.Origin.DistanceTo(at) > Tol)
             {
-                warnings.Add($"{label}: the connection at {Format(at)} was not remade (the new branch has no open end there).");
+                warnings.Add($"{label}: the connection at {Format(at)} was left open (the new branch has no open end there).");
                 continue;
             }
             if (Math.Abs(Radius(inside) - Radius(outside)) > 1e-4)
-                warnings.Add($"{label}: sizes differ at {Format(at)}; connected anyway, check it.");
-            inside.ConnectTo(outside);
+                warnings.Add($"{label}: sizes differ at {Format(at)}; check that connection.");
+            try
+            {
+                inside.ConnectTo(outside);
+            }
+            catch (Exception ex) when (ex is Autodesk.Revit.Exceptions.ApplicationException or InvalidOperationException)
+            {
+                warnings.Add($"{label}: the connection at {Format(at)} could not be made ({ex.Message}).");
+            }
         }
         return all;
     }
 
-    private static Branch Build(IReadOnlyList<Element> elements, Connector root, Element? header, ElementId? assemblyId)
-    {
-        var origin = root.Origin;
-        var outward = root.CoordinateSystem.BasisZ.Negate(); // a connector faces what it connects to: the header
-        var far = elements.SelectMany(PhysicalConnectors).Select(c => c.Origin - origin)
-            .Select(v => v - outward * v.DotProduct(outward))
-            .MaxBy(v => v.GetLength());
-        var across = far is not null && far.GetLength() > 0.05 ? far.Normalize() : null;
-        return new Branch(elements, root.Owner.Id, origin, outward, across, Radius(root), header, SystemName(root.Owner), assemblyId);
-    }
-
     /// <summary>
-    /// Same count, and every element matches one in the other branch by type, connector sizes and connector
-    /// positions in each branch's own frame (so a mirror-side or rotated branch still matches).
+    /// A branch whose header is its outside connection to piping with the biggest connectors (the header
+    /// tee/olet), so equipment, valves or a smaller pipe at the far end are never taken for the header.
     /// </summary>
-    private static bool SameLayout(Branch a, Branch b)
+    private static Branch? AutoDescribe(IReadOnlyList<Element> elements)
     {
-        if (a.Elements.Count != b.Elements.Count || Math.Abs(a.RootRadius - b.RootRadius) > 1e-4) return false;
-        var (fa, fb) = Frames(a, b);
-        var la = a.Elements.Select(e => (Key: Key(e), Points: Local(fa, e))).ToList();
-        var lb = b.Elements.Select(e => (Key: Key(e), Points: Local(fb, e))).ToList();
-        var used = new bool[lb.Count];
-        foreach (var (key, points) in la)
-        {
-            int j = Enumerable.Range(0, lb.Count).FirstOrDefault(j => !used[j] && lb[j].Key == key && Matches(points, lb[j].Points), -1);
-            if (j < 0) return false;
-            used[j] = true;
-        }
-        return true;
+        var link = ExternalLinks(elements)
+            .OrderByDescending(l => PipingElements.IsPiping(l.Outside.Owner))
+            .ThenByDescending(l => MaxRadius(l.Outside.Owner))
+            .FirstOrDefault();
+        if (link.Inside is null) return null;
+        return new Branch(elements, link.Inside.Owner.Id, link.Inside.Origin, link.Inside.CoordinateSystem.BasisZ.Negate(),
+            Radius(link.Inside), link.Outside.Owner, SystemName(link.Inside.Owner));
     }
 
-    /// <summary>
-    /// Frames for comparing or mapping two branches: X straight out of the header, Y towards the far end
-    /// when both branches turn, else world up (or world X for a vertical branch) for both.
-    /// </summary>
-    private static (Transform A, Transform B) Frames(Branch a, Branch b)
+    /// <summary>Frame at a root: X out of the header, Y world-up turned <paramref name="turn"/> about X (world X for a vertical branch).</summary>
+    private static Transform Frame(XYZ origin, XYZ x, double turn)
     {
-        bool turn = a.Across is not null && b.Across is not null;
-        return (Frame(a, turn ? a.Across : null), Frame(b, turn ? b.Across : null));
-    }
-
-    private static Transform Frame(Branch b, XYZ? across)
-    {
-        var y = across ?? Perpendicular(b.Out, XYZ.BasisZ) ?? Perpendicular(b.Out, XYZ.BasisX)!;
+        var y0 = Perpendicular(x, XYZ.BasisZ) ?? Perpendicular(x, XYZ.BasisX)!;
+        var z0 = x.CrossProduct(y0);
+        var y = y0 * Math.Cos(turn) + z0 * Math.Sin(turn);
         var t = Transform.Identity;
-        t.Origin = b.Origin;
-        t.BasisX = b.Out;
+        t.Origin = origin;
+        t.BasisX = x;
         t.BasisY = y;
-        t.BasisZ = b.Out.CrossProduct(y);
+        t.BasisZ = x.CrossProduct(y);
         return t;
     }
 
@@ -285,32 +326,15 @@ public sealed class ReplaceConfigurationService(Document doc)
         return (axis.Normalize(), Math.PI);
     }
 
-    /// <summary>Branch elements reachable from <paramref name="start"/> without passing the header; null past <paramref name="limit"/>.</summary>
-    private static List<Element>? Grow(Element start, ElementId headerId, int limit)
-    {
-        var found = new Dictionary<ElementId, Element> { [start.Id] = start };
-        var queue = new Queue<Element>([start]);
-        while (queue.TryDequeue(out var e))
-        {
-            foreach (var n in PhysicalConnectors(e).Where(c => c.IsConnected).SelectMany(Refs).Select(r => r.Owner))
-            {
-                if (n.Id == headerId || !PipingElements.IsPiping(n) || !found.TryAdd(n.Id, n)) continue;
-                if (found.Count > limit) return null;
-                queue.Enqueue(n);
-            }
-        }
-        return found.Values.ToList();
-    }
-
-    /// <summary>Targets ordered along the axis their roots spread out on most (the header's run).</summary>
-    private static List<Branch> AlongHeader(IReadOnlyList<Branch> targets)
+    /// <summary>Targets ordered along the axis their roots spread out on most.</summary>
+    private static List<Target> AlongHeader(IReadOnlyList<Target> targets)
     {
         if (targets.Count < 2) return targets.ToList();
-        double Spread(Func<XYZ, double> f) => targets.Max(t => f(t.Origin)) - targets.Min(t => f(t.Origin));
+        double Spread(Func<XYZ, double> f) => targets.Max(t => f(t.Old.Origin)) - targets.Min(t => f(t.Old.Origin));
         Func<XYZ, double> axis = Spread(p => p.X) >= Spread(p => p.Y)
             ? (Spread(p => p.X) >= Spread(p => p.Z) ? p => p.X : p => p.Z)
             : (Spread(p => p.Y) >= Spread(p => p.Z) ? p => p.Y : p => p.Z);
-        return targets.OrderBy(t => axis(t.Origin)).ToList();
+        return targets.OrderBy(t => axis(t.Old.Origin)).ToList();
     }
 
     private static bool SetValue(Element e, string name, string value)
@@ -327,25 +351,6 @@ public sealed class ReplaceConfigurationService(Document doc)
 
     private static string Key(Element e) =>
         $"{e.GetTypeId().Value}|{string.Join(",", PhysicalConnectors(e).Select(c => Math.Round(Radius(c), 4)).OrderBy(r => r))}";
-
-    private static List<XYZ> Local(Transform frame, Element e)
-    {
-        var inverse = frame.Inverse;
-        return PhysicalConnectors(e).Select(c => inverse.OfPoint(c.Origin)).ToList();
-    }
-
-    private static bool Matches(List<XYZ> a, List<XYZ> b)
-    {
-        if (a.Count != b.Count) return false;
-        var used = new bool[b.Count];
-        foreach (var p in a)
-        {
-            int j = Enumerable.Range(0, b.Count).FirstOrDefault(j => !used[j] && p.DistanceTo(b[j]) < Tol, -1);
-            if (j < 0) return false;
-            used[j] = true;
-        }
-        return true;
-    }
 
     /// <summary>Connections from inside the set to anything outside it (the header, equipment, other branches).</summary>
     public static List<(Connector Inside, Connector Outside)> ExternalLinks(IReadOnlyCollection<Element> elements)
@@ -365,13 +370,32 @@ public sealed class ReplaceConfigurationService(Document doc)
 
     private static double Radius(Connector c) => c.Shape == ConnectorProfileType.Round ? c.Radius : 0;
 
+    private static double MaxRadius(Element e) => PhysicalConnectors(e).Select(Radius).DefaultIfEmpty(0).Max();
+
     private static string? SystemName(Element e) => e.get_Parameter(BuiltInParameter.RBS_SYSTEM_NAME_PARAM)?.AsString();
 
     private static ElementId? SystemType(Element e) => e.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)?.AsElementId();
 
-    private static double MaxRadius(Element e) => PhysicalConnectors(e).Select(Radius).DefaultIfEmpty(0).Max();
-
     private string Format(XYZ p) => $"({UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.X, false)}, " +
                                     $"{UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.Y, false)}, " +
                                     $"{UnitFormatUtils.Format(doc.GetUnits(), SpecTypeId.Length, p.Z, false)})";
+
+    /// <summary>
+    /// Keeps a placement's warnings from popping up one dialog per branch, and records why Revit rolls one
+    /// back so the report can say so instead of failing silently.
+    /// </summary>
+    private sealed class Failures : IFailuresPreprocessor
+    {
+        public List<string> Errors { get; } = [];
+
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor accessor)
+        {
+            foreach (var f in accessor.GetFailureMessages())
+            {
+                if (f.GetSeverity() == FailureSeverity.Warning) accessor.DeleteWarning(f);
+                else Errors.Add(f.GetDescriptionText());
+            }
+            return Errors.Count > 0 ? FailureProcessingResult.ProceedWithRollBack : FailureProcessingResult.Continue;
+        }
+    }
 }

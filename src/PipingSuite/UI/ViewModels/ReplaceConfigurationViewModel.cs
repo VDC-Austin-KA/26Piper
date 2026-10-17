@@ -7,26 +7,21 @@ using PipingSuite.Services;
 
 namespace PipingSuite.UI.ViewModels;
 
-/// <summary>Replace scope and optional per-placement numbering of one parameter.</summary>
+/// <summary>Optional per-placement numbering of one parameter (which branches is settled in the model review before this).</summary>
 public sealed partial class ReplaceConfigurationViewModel : DialogViewModelBase
 {
     private readonly IReadOnlyDictionary<string, string> _sourceValues;
 
     /// <param name="sourceValues">Writable parameters on the correct branch and their current values (start values derive from these).</param>
-    public ReplaceConfigurationViewModel(string summary, int matches, string sameSystemLabel, IReadOnlyDictionary<string, string> sourceValues)
+    public ReplaceConfigurationViewModel(string summary, IReadOnlyDictionary<string, string> sourceValues)
     {
         Summary = summary;
-        Matches = matches;
-        SameSystemLabel = sameSystemLabel;
         _sourceValues = sourceValues;
         Parameters = sourceValues.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
         _selectedMode = Modes[0];
     }
 
     public string Summary { get; }
-    public int Matches { get; }
-    public bool HasMatches => Matches > 0;
-    public string SameSystemLabel { get; }
     public IReadOnlyList<string> Parameters { get; }
 
     public IReadOnlyList<LabeledValue<IncrementMode>> Modes { get; } =
@@ -34,11 +29,6 @@ public sealed partial class ReplaceConfigurationViewModel : DialogViewModelBase
         new("Last number (01 → 02)", IncrementMode.Number),
         new("Last letter (DETAIL A → DETAIL B)", IncrementMode.Letter),
     ];
-
-    [ObservableProperty] private bool _replaceAll = true;
-
-    /// <summary>Off by default: each header section is usually its own system, and matching across them is the point.</summary>
-    [ObservableProperty] private bool _sameSystemOnly;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Preview))] private bool _number;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(Preview))] private string? _selectedParameter;
