@@ -42,6 +42,8 @@ public sealed class App : IExternalApplication
             "Click a pipe to place a centred olet (no branch pipe left behind), or click an existing olet to resize it in place.");
         AddButton<CopyOletCommand>(routing, "Copy\nOlet", "copy_olet", "copy_olet",
             "Copy an olet's placement (distance, rotation, size, type) onto other pipes in one go. Extends pipes that are too short.");
+        AddButton<ReplaceConfigurationCommand>(routing, "Replace\nConfig", "replace", "replace",
+            "Swap every branch laid out like a picked one (same system) for a correctly built branch or assembly, reconnected to its header, with optional numbering.");
 
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",

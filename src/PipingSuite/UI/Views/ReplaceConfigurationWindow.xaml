@@ -1,0 +1,39 @@
+<Window x:Class="PipingSuite.UI.Views.ReplaceConfigurationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Replace Configuration" Width="440" SizeToContent="Height"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="12">
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+        <RadioButton Content="Replace the picked branch and every match (highlighted)" IsChecked="{Binding ReplaceAll}"
+                     IsEnabled="{Binding HasMatches}" Margin="0,2,0,2" />
+        <RadioButton Content="Replace only the picked branch" Margin="0,2,0,10" />
+
+        <CheckBox Content="Number each placement" IsChecked="{Binding Number}" Margin="0,2,0,4" />
+        <Grid Margin="20,0,0,8" IsEnabled="{Binding Number}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Parameter" VerticalAlignment="Center" Margin="0,0,8,4" />
+            <ComboBox Grid.Column="1" ItemsSource="{Binding Parameters}" SelectedItem="{Binding SelectedParameter}" Margin="0,0,0,4" />
+            <TextBlock Grid.Row="1" Text="Increase" VerticalAlignment="Center" Margin="0,0,8,4" />
+            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" Margin="0,0,0,4" />
+            <TextBlock Grid.Row="2" Text="First value" VerticalAlignment="Center" Margin="0,0,8,4" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Start, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4" />
+            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Preview}" Foreground="Gray" TextWrapping="Wrap" />
+        </Grid>
+
+        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                   Text="Each old branch is deleted and the correct one is copied onto its header connection, turned to run the same way, then reconnected to the header and anything else the old branch was connected to. Placements (and numbering) go along the header, lowest first. A placement that fails keeps its old branch. One undo reverts everything." />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Replace" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

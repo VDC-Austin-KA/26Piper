@@ -206,6 +206,19 @@ def icon_overall_map(d):
             d.line([(x + 15, y + 4), (x + 15, y + 26)], fill=INK, width=4)
 
 
+def _valve(d, cx, cy, r, color):
+    """Bow-tie valve symbol on a vertical run."""
+    d.polygon([(cx - r, cy - r), (cx + r, cy - r), (cx - r, cy + r), (cx + r, cy + r)], fill=color)
+
+
+def icon_replace(d):
+    pipe(d, (6, 18), (122, 18), 20)                                       # header
+    pipe(d, (34, 28), (34, 112), 12, GHOST)                               # old branch
+    pipe(d, (94, 28), (94, 112), 12, GREEN)                               # correct branch
+    _valve(d, 94, 64, 12, INK)
+    arrow(d, (48, 70), (78, 70), 6, ORANGE)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -217,6 +230,7 @@ ICONS = {
     "copy_olet": icon_copy_olet,
     "iso_map": icon_iso_map,
     "overall_map": icon_overall_map,
+    "replace": icon_replace,
 }
 
 
@@ -437,6 +451,23 @@ def scene_overall_map(t, d):
     caption(d, "Overall Map: a translucent box per spool, colored by package")
 
 
+def scene_replace(t, d):
+    f = font(10 * SS, True)
+    pipe(d, s(20, 40), s(380, 40), 16 * SS)                               # header stays
+    for i, x in enumerate((80, 200, 320)):
+        swap = phase(t, 1.2 + i * 0.5, 1.7 + i * 0.5)
+        if swap < 1:                                                      # old branch fades out
+            pipe(d, s(x, 48), s(x, 180), 10 * SS, mix(GHOST, BG, swap))
+        if swap > 0:                                                      # correct one drops in, same spot and direction
+            y = 30 * (1 - swap)
+            col = mix(BG, GREEN, swap)
+            pipe(d, s(x, 48 - y), s(x, 180 - y), 10 * SS, col)
+            _valve(d, *s(x, 100 - y), 9 * SS, mix(BG, INK, swap))
+            d.ellipse([*s(x - 5, 140 - y), *s(x + 5, 150 - y)], fill=mix(BG, ORANGE, swap))   # olet
+            d.text(s(x + 16, 165 - y), f"DETAIL {'ABC'[i]}", font=f, fill=mix(BG, INK, swap), anchor="lm")
+    caption(d, "Replace Config: swap every matching branch, numbered")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -447,6 +478,7 @@ SCENES = {
     "copy_olet": scene_copy_olet,
     "iso_map": scene_iso_map,
     "overall_map": scene_overall_map,
+    "replace": scene_replace,
 }
 
 

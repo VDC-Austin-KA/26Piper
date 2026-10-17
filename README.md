@@ -112,6 +112,14 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Legend:** swatches in the same colors, with the package names inside, stacked to the left of the boxes and top-aligned with them.
 - Everything is one undo. Revit then opens the new view and reports the box count.
 
+**Replace Configuration** (Routing panel) swaps every wrongly built branch for a correct one:
+1. **Pick the wrong branch:** preselect or select its pipes, fittings and valves, but not the tee/olet on the header. If it connects to more than one thing, you're asked to pick the header (the pipe or its tee/olet).
+2. **Pick the correct branch:** select its elements, or its assembly. If its header end isn't obvious, click that end.
+3. **Matching:** every branch on the same system name that comes off the same kind of header fitting and has the same layout is found and highlighted. Same layout means the same element types and sizes at the same spots (within 1/4"), measured from where the branch leaves the header. It is compared in each branch's own direction, so branches on the other side of the header, or rotated, still match.
+4. **Replace:** choose all matches or only the picked one. Each old branch is deleted, and the correct one is copied onto its header connection and turned to run the same way. It is then reconnected to the header and to anything else the old branch was connected to (e.g. equipment at the far end). An assembly is copied as a new instance of the same assembly type.
+5. **Numbering (optional):** pick a parameter and step either its last number (`01 → 02`, `09 → 10`) or its last letter (`DETAIL A → DETAIL B`, `Z → AA`) for each placement. Placements are numbered along the header, lowest coordinate first. The first value defaults to one step past the correct branch's own value and can be edited, and a preview shows the first few.
+- Each placement is its own transaction inside one undo group. A placement Revit rejects keeps its old branch and is listed in the report, along with any connection that couldn't be remade or that joins mismatched sizes.
+
 ## Roadmap
 
 **Feature B – view filters**
