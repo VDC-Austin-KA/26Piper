@@ -227,6 +227,16 @@ def icon_heal(d):
     pipe(d, (64, 6), (64, 30), 12, PIPE_LIGHT)
 
 
+def icon_ez_iso(d):
+    pipe(d, (6, 30), (122, 30), 20)                                       # header
+    pipe(d, (36, 40), (36, 84), 12, PIPE_LIGHT)                           # two branches off the header
+    pipe(d, (92, 40), (92, 84), 12, PIPE_LIGHT)
+    f = font(18, True)
+    tag(d, 14, 80, 46, 26, GREEN, "05", f)                                # numbered
+    tag(d, 70, 80, 46, 26, RED, "05", f)                                  # duplicate
+    check(d, 64, 118, 10, GREEN, 7)                                       # fixed
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -240,6 +250,7 @@ ICONS = {
     "overall_map": icon_overall_map,
     "replace": icon_replace,
     "heal": icon_heal,
+    "ez_iso": icon_ez_iso,
 }
 
 
@@ -497,6 +508,24 @@ def scene_heal(t, d):
     caption(d, "Connect Disconnects: find touching ends, then join them")
 
 
+def scene_ez_iso(t, d):
+    f = font(11 * SS, True)
+    pipe(d, s(20, 60), s(380, 60), 16 * SS)                               # header
+    # (branch x, phase-1 tag text, phase-1 tag colour, phase-2 tag text)
+    lanes = [(90, "05", PIPE, "05"), (200, "05", RED, "06"), (310, "--", ORANGE, "07")]
+    for i, (x, old, c0, new) in enumerate(lanes):
+        grow = phase(t, 0.4 + i * 0.3, 0.9 + i * 0.3)                     # branch drops in
+        if grow > 0:
+            pipe(d, s(x, 68), s(x, 68 + 82 * grow), 10 * SS)
+        if grow >= 1:                                                     # tag at the branch end
+            p = phase(t, 2.4 + i * 0.2, 2.9 + i * 0.2)                    # renumber to next free line
+            tag(d, *s(x - 6, 146, 74, 24), mix(c0, GREEN, p), old if p < 0.5 else new, f)
+    ok = phase(t, 3.2, 3.7)                                               # check appears
+    if ok > 0:
+        check(d, *s(350, 110), 14 * SS * ok, GREEN, 5 * SS)
+    caption(d, "Duplicate and unnumbered lines get the next free number")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -509,6 +538,7 @@ SCENES = {
     "overall_map": scene_overall_map,
     "replace": scene_replace,
     "heal": scene_heal,
+    "ez_iso": scene_ez_iso,
 }
 
 

@@ -142,6 +142,21 @@ Color schemes save to and load from `.json` files. The window stays open while y
 3. **Same system type only** (on by default) never joins e.g. supply to return.
 4. **Window:** the list stays open while you work. **Zoom** selects an item and zooms to it in Revit. Tick what to fix, then **Connect ticked**. Each fix is its own step in one undo group, and the list rescans the same selection afterwards.
 
+**EZ-ISO Check** (Routing panel) gets line numbers ready for EZ-ISO's Auto Line Nos, which reads `{BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}`:
+1. **Scope:** preselect, or window-select when prompted, the piping to check. A whole package or system works best, so duplicates are found. Olets on the selected pipes are included.
+2. **Lines:** each branch from its header tee or olet to its far end is one line, and each header run between branch points is its own line.
+   - A tee or olet goes with the side that already carries its number. If neither side does, an olet goes with its branch and a tee with its run.
+   - A header numbered straight through its tees, or a vent carrying its pipe's number, stays one line: touching pieces that already share a number are never split.
+   - A line's number is the one most of its elements carry. A line with no BC_SYSTEM or BC_PACKAGE borrows them from the line it comes off.
+3. **Correct lines are left alone:** a line whose elements all agree and whose number no other line uses is not listed and never changed.
+4. **What it lists:**
+   - **Fill values** (ticked): fittings, valves and olets with an empty BC_ value get their line's.
+   - **New number** (ticked): a duplicate (a separate line with the same number, usually a copied branch) or an unnumbered line gets the next free BC_LINE SEGMENT for its system and package. That is the one after the highest anywhere in the model, with the same zero padding (`06 → 07`). Of the duplicates, the longest line keeps its number.
+   - **Match line** (unticked): a few elements carrying a different number than the rest of their line are set back to the line's number.
+   - **Connect** (unticked): a tap or olet sitting on a pipe without being attached, or ends touching without being connected (within 1/8"). These are fixed the way Connect Disconnects does it.
+   - **Check:** needs a person, e.g. a line with no BC_SYSTEM anywhere near it. Listed, not fixed.
+5. **Window:** **Zoom** selects an item and zooms to it in Revit. **Fix ticked** applies the fixes in one undo: values first, then connections. Then it rescans. **Select for EZ-ISO** selects the checked piping, so EZ-ISO's Auto Line Nos can run on it.
+
 ## Roadmap
 
 **Feature B – view filters**

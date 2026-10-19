@@ -46,6 +46,8 @@ public sealed class App : IExternalApplication
             "Find every open end in a piping system that touches something it isn't connected to, zoom to each, and connect them: direct, elbow, transition, takeoff or re-attached olet.");
         AddButton<ReplaceConfigurationCommand>(routing, "Replace\nConfig", "replace", "replace",
             "Swap every branch laid out like a picked one (same system) for a correctly built branch or assembly, reconnected to its header, with optional numbering.");
+        AddButton<EzIsoCheckCommand>(routing, "EZ-ISO\nCheck", "ez_iso", "ez_iso",
+            "Check line numbers ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) for EZ-ISO's Auto Line Nos: correct lines are left alone; empty values, outliers, duplicate and unnumbered lines and touching-but-unconnected taps are listed with a fix.");
 
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",
