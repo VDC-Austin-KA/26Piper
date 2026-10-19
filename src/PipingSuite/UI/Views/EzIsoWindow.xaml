@@ -1,0 +1,49 @@
+<Window x:Class="PipingSuite.UI.Views.EzIsoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="EZ-ISO Check" Width="900" Height="560" MinWidth="620" MinHeight="320"
+        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Scope}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Fix ticked" Padding="10,2" IsDefault="True" Command="{Binding ApplyCommand}" />
+                <Button Content="Select for EZ-ISO" Padding="10,2" Margin="8,0,0,0" Command="{Binding SelectCommand}"
+                        ToolTip="Select every checked element so EZ-ISO's Auto Line Nos can pick them up" />
+                <Button Content="Close" Width="80" Margin="8,0,0,0" IsCancel="True" />
+            </StackPanel>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                <Button Content="Tick all" Padding="10,2" Command="{Binding CheckAllCommand}" />
+                <Button Content="Rescan" Padding="10,2" Margin="8,0,0,0" Command="{Binding ScanCommand}" />
+            </StackPanel>
+            <TextBlock Text="{Binding Status}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="12,0" Foreground="Gray" />
+        </DockPanel>
+
+        <ListView ItemsSource="{Binding Items}">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Width="32">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanFix}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="Fix" Width="100" DisplayMemberBinding="{Binding Action}" />
+                    <GridViewColumn Header="Line" Width="170" DisplayMemberBinding="{Binding Line}" />
+                    <GridViewColumn Header="What" Width="480" DisplayMemberBinding="{Binding What}" />
+                    <GridViewColumn Width="70">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Zoom" Padding="6,0" ToolTip="Select and zoom to it in Revit"
+                                        Command="{Binding DataContext.ZoomCommand, RelativeSource={RelativeSource AncestorType=ListView}}"
+                                        CommandParameter="{Binding}" />
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>
