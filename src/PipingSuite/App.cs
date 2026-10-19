@@ -60,6 +60,8 @@ public sealed class App : IExternalApplication
             "One locked isometric per DETAIL type (or per configuration) in the selection: rainbow-colored and tagged by line segment, cropped square for sheets.");
         AddButton<AutoDimensionCommand>(view, "Auto\nDimension", "auto_dim", "auto_dim",
             "Dimension the piping in the active view (or the selected piping) like a spool iso: one chained dimension per straight leg, centre to centre of its fittings and valves. Works in locked 3D views, plans and sections.");
+        AddButton<IsoBomCommand>(view, "ISO\nBOM", "iso_bom", "iso_bom",
+            "Add a bill of materials table to the active ISO view (selected or visible piping): item, quantity (pipe length or count), size and description, drawn in the view so it goes onto the sheet with it. Pick a text size or fit it to the piping, and a side; run again to resize or move it.");
 
         application.ControlledApplication.ApplicationInitialized += (_, _) => AttachVideoTooltips();
         return Result.Succeeded;

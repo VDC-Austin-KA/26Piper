@@ -171,7 +171,8 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - The line segments are tagged with `ISO Tag : Pipe Size System Tag`, in a column with shouldered leaders.
    - The crop is square. Every view uses the same corner and scale, so the views line up on sheets.
 5. To dimension a view, open it and run **Auto Dimension** (below).
-6. One undo removes all the views.
+6. **BOM** (tick **Add a BOM table** and pick its size and side; off by default and remembered for the session): added the same way as **ISO BOM** below, with the crop kept square.
+7. One undo removes all the views.
 
 **Auto Dimension** (Visualize panel) dimensions the piping in the active view the way a spool iso does. It uses the selected piping if any is selected, otherwise all piping visible in the view. A dialog asks which linear dimension type to use. The choice is saved as your default (in `%AppData%\PipingSuite`), so it's preselected next time.
 1. **One chained dimension per straight leg.** It runs to the centre of every fitting and accessory on the leg (elbows, tees, olets, valves), and to pipe ends that leave the set. Each string reads centre to centre and adds up to the leg.
@@ -186,6 +187,17 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
    - **Plan or section:** each dimension lies in the view plane. Legs running towards the viewer have no length to show, so they're skipped.
 4. **Report:** the report says how many legs were dimensioned. For each leg Revit refused, it gives the pipe id and Revit's reason. One undo removes everything.
+
+**ISO BOM** (Visualize panel) adds a bill of materials table to the active view, usually an ISO view. It lists the selected piping if any is selected, otherwise all piping visible in the view.
+1. **Columns:** ITEM, QTY, SIZE, DESCRIPTION.
+   - Pipe is listed by segment (material and schedule) and size, with its total length as the quantity.
+   - Fittings and valves are listed by family, type and size, with a count.
+   - Items are numbered pipe first, then fittings, then valves and accessories.
+2. **In the view:** the table is made of text notes drawn in the view itself, so it goes onto the sheet with the iso. Each column is a bordered note with a bold, underlined header. The notes use text types named `PipingSuite BOM <size>`, which are made when first needed.
+3. **Size:** Small (3/32" text), Medium (1/8"), Large (3/16") or Extra large (1/4"). **Fit to the piping** sizes the text so the table is as tall as the piping beside it, or as wide as the piping above or below it (1/16" to 3/8").
+4. **Side:** right, below, left or above the piping. The table stays clear of the tags and dimensions.
+5. **Crop:** the crop grows to take in the table. It stays square by default, so the view still lines up with other ISO views; untick it to crop tight around the piping and table.
+6. **Re-run** to resize or move the table: the view's old BOM is replaced. A 3D view is locked first, if needed. One undo removes it.
 
 ## Roadmap
 

@@ -13,8 +13,9 @@ public enum IsoCorner { SouthWest, SouthEast, NorthEast, NorthWest }
 
 /// <param name="Scale">View scale denominator, e.g. 24 for 1/2" = 1'-0"; sets the tag size relative to the piping.</param>
 /// <param name="Color">Colour per <paramref name="ColorParameter"/> value; off leaves the shaded piping as it is.</param>
+/// <param name="Bom">Bill of materials table beside the piping (see <see cref="BomService"/>); null for none.</param>
 public sealed record IsoMapOptions(string ViewName, IsoCorner Corner, int Scale, string ColorParameter, bool Rainbow, bool TagSegments,
-    bool Color = true);
+    bool Color = true, BomOptions? Bom = null);
 
 public sealed record IsoMapResult(View3D View, int ColoredValues, int Tags, IReadOnlyList<string> Warnings);
 
@@ -102,7 +103,8 @@ public sealed class IsoMapService(Document doc)
                 }
                 else warnings.Add($"Tag type \"{TagFamily} : {TagType}\" is not loaded, so line segments were not tagged.");
             }
-            CropSquare(view, extents);
+            Crop(view, extents);
+            if (options.Bom is { } bom) warnings.AddRange(new BomService(doc).Place(view, elements, bom).Notes);
             t.Commit();
         }
 
@@ -289,14 +291,15 @@ public sealed class IsoMapService(Document doc)
         return Cross(p1, p2, q1) * Cross(p1, p2, q2) < 0 && Cross(q1, q2, p1) * Cross(q1, q2, p2) < 0;
     }
 
-    /// <summary>Square crop around the content, centred, with a small margin.</summary>
-    private static void CropSquare(View3D view, Rect2 extents)
+    /// <summary>Crop around the content, centred, with a small margin: square, or just the content's shape.</summary>
+    internal static void Crop(View view, Rect2 extents, bool square = true)
     {
-        double half = Math.Max(extents.Width, extents.Height) * 0.55; // 10% margin overall
+        double halfX = (square ? Math.Max(extents.Width, extents.Height) : extents.Width) * 0.55; // 10% margin overall
+        double halfY = square ? halfX : extents.Height * 0.55;
         var (cx, cy) = extents.Center;
         var crop = view.CropBox;
-        crop.Min = new XYZ(cx - half, cy - half, crop.Min.Z);
-        crop.Max = new XYZ(cx + half, cy + half, crop.Max.Z);
+        crop.Min = new XYZ(cx - halfX, cy - halfY, crop.Min.Z);
+        crop.Max = new XYZ(cx + halfX, cy + halfY, crop.Max.Z);
         view.CropBoxActive = true;
         view.CropBox = crop;
         view.CropBoxVisible = false;
@@ -341,14 +344,14 @@ public sealed class IsoMapService(Document doc)
         return unique;
     }
 
-    private static IEnumerable<XYZ> Corners(BoundingBoxXYZ b) =>
+    internal static IEnumerable<XYZ> Corners(BoundingBoxXYZ b) =>
         from x in new[] { b.Min.X, b.Max.X }
         from y in new[] { b.Min.Y, b.Max.Y }
         from z in new[] { b.Min.Z, b.Max.Z }
         select b.Transform.OfPoint(new XYZ(x, y, z));
 
     /// <summary>Axis-aligned rectangle in the view's crop coordinates (x = right, y = up).</summary>
-    private readonly record struct Rect2(double MinX, double MinY, double MaxX, double MaxY)
+    internal readonly record struct Rect2(double MinX, double MinY, double MaxX, double MaxY)
     {
         public double Width => MaxX - MinX;
         public double Height => MaxY - MinY;
@@ -362,7 +365,7 @@ public sealed class IsoMapService(Document doc)
     }
 
     /// <summary>Projects model points into the view's crop frame, where the crop box itself is defined.</summary>
-    private sealed class ViewFrame(View view)
+    internal sealed class ViewFrame(View view)
     {
         private readonly Transform _toModel = view.CropBox.Transform;
         private readonly Transform _toLocal = view.CropBox.Transform.Inverse;

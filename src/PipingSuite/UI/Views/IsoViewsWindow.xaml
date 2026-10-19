@@ -27,6 +27,16 @@
         <TextBlock Text="{Binding TagStatus}" TextWrapping="Wrap" Foreground="Gray" Margin="20,0,0,4" />
         <CheckBox Content="Color by BC_LINE SEGMENT (Color Splasher)" IsChecked="{Binding Color}" Margin="0,2,0,2" />
         <CheckBox Content="Rainbow gradient (otherwise distinct colors)" IsChecked="{Binding Rainbow}" IsEnabled="{Binding Color}" Margin="20,2,0,4" />
+        <CheckBox Content="Add a BOM table (size and side below; ISO BOM changes it later)" IsChecked="{Binding Bom}" Margin="0,2,0,2" />
+        <Grid Margin="20,2,0,8" IsEnabled="{Binding Bom}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <ComboBox ItemsSource="{Binding BomSizes}" SelectedItem="{Binding SelectedBomSize}" />
+            <ComboBox Grid.Column="2" ItemsSource="{Binding BomPlacements}" SelectedItem="{Binding SelectedBomPlacement}" />
+        </Grid>
 
         <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
                    Text="Each view is a new locked, shaded isometric showing only its configuration, colored per line segment, with tags stacked in a column and a square crop, all from the same corner and scale so they line up on sheets. One undo removes all the views." />
