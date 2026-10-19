@@ -15,7 +15,9 @@ public sealed record DimensionResult(IReadOnlyList<Dimension> Dimensions, int Le
 /// to centre and adds up to the leg. A fitting is measured to its family's centre reference plane square to the
 /// leg; a family without one (a 45° elbow on a rolled offset) is measured to the centreline of a pipe leaving it at
 /// right angles, else to a short invisible line drawn through its centre. Fittings joined straight to each other
-/// (a return bend, an elbow on a valve) make a leg of their own. Flanges, unions and couplings aren't measured to.
+/// (a return bend, an elbow on a valve) make a leg of their own. A flanged joint is measured once, to its centre
+/// (where the flanges meet), not to each flange; a flange on a valve is left to the valve's centre. Unions and
+/// couplings aren't measured to.
 /// Works in plans, sections and 3D views (a 3D view is locked first; each dimension lies in the plane of its leg
 /// that faces the viewer most). The caller holds the transaction.
 /// </summary>
@@ -25,7 +27,7 @@ public sealed class DimensionService(Document doc)
     private const double SameStation = 1.0 / 192;  // ft (1/16"): stations closer than this are one
     private const double DimOffsetInches = 0.35;   // on paper, beyond the pipe's outside
 
-    private static readonly HashSet<PartType> NotMeasured = [PartType.PipeFlange, PartType.Union, PartType.PipeMechanicalCoupling];
+    private static readonly HashSet<PartType> NotMeasured = [PartType.Union, PartType.PipeMechanicalCoupling];
 
     /// <param name="Min">Extent along <paramref name="Dir"/> from <paramref name="Origin"/>.</param>
     /// <param name="Key">An element on the leg, for its spool and for reporting.</param>
@@ -35,7 +37,8 @@ public sealed class DimensionService(Document doc)
         public XYZ At(double t) => Origin + Dir * t;
     }
 
-    public DimensionResult Dimension(View view, IReadOnlyList<Element> elements)
+    /// <param name="type">Linear dimension type to use; null for the document's default.</param>
+    public DimensionResult Dimension(View view, IReadOnlyList<Element> elements, DimensionType? type = null)
     {
         var notes = new List<string>();
         var dims = new List<Dimension>();
@@ -49,6 +52,7 @@ public sealed class DimensionService(Document doc)
         var piping = elements.Where(PipingElements.IsPiping).DistinctBy(e => e.Id).ToList();
         var ids = piping.Select(e => e.Id).ToHashSet();
         var parts = piping.OfType<FamilyInstance>().Where(Measured).ToList();
+        var joints = Joints(piping.OfType<FamilyInstance>().Where(IsJoint).ToList(), ids);
         var centreOf = Centres(piping);
         var facing = view.ViewDirection.Negate(); // towards the model
         bool is3D = view is View3D;
@@ -95,7 +99,19 @@ public sealed class DimensionService(Document doc)
                     continue;
                 }
 
-                // Nothing to measure to: a short invisible line through the centre, square to the leg, in the dimension's plane.
+                Mark(t);
+            }
+
+            // Flanged joints: one station where the flanges meet.
+            foreach (var p in joints)
+            {
+                double t = T(p);
+                if (t >= run.Min - reach && t <= run.Max + reach && run.At(t).DistanceTo(p) <= run.Radius + OnAxis) Mark(t);
+            }
+
+            // Nothing to measure to: a short invisible line through the point, square to the leg, in the dimension's plane.
+            void Mark(double t)
+            {
                 try
                 {
                     var half = side * Math.Max(run.Radius, 0.05);
@@ -138,7 +154,7 @@ public sealed class DimensionService(Document doc)
                 var refs = new ReferenceArray();
                 foreach (var s in stations) refs.Append(s.Ref);
                 var at = Line.CreateBound(run.At(stations[0].T) + shift, run.At(stations[^1].T) + shift);
-                if (doc.Create.NewDimension(view, at, refs) is { } dim) dims.Add(dim);
+                if ((type is null ? doc.Create.NewDimension(view, at, refs) : doc.Create.NewDimension(view, at, refs, type)) is { } dim) dims.Add(dim);
                 else refused.Add($"[{run.Key.Value}] Revit returned no dimension");
             }
             catch (Exception ex)
@@ -148,7 +164,7 @@ public sealed class DimensionService(Document doc)
         }
 
         if (edgeOn > 0) notes.Add($"{edgeOn} leg(s) run towards the viewer in this view, so they have no length to dimension here.");
-        if (helpers > 0) notes.Add($"{helpers} fitting centre(s) had no centre reference plane square to their leg, so an invisible reference line was drawn through each.");
+        if (helpers > 0) notes.Add($"{helpers} flanged joint(s) or fitting centre(s) without a centre reference plane square to their leg got an invisible reference line to measure to.");
         if (noReference > 0) notes.Add($"{noReference} fitting(s) or pipe end(s) had no centre reference or centreline to dimension to.");
         if (refused.Count > 0)
             notes.Add($"Revit refused {refused.Count} leg(s) (element id, reason): " + string.Join("; ", refused.Take(5)) + (refused.Count > 5 ? " …" : string.Empty));
@@ -264,8 +280,44 @@ public sealed class DimensionService(Document doc)
         if (flat.GetLength() > 0.1) yield return flat.Normalize();
     }
 
+    /// <summary>Fittings and accessories measured to their centre: not flanges, gaskets, unions or couplings.</summary>
     private static bool Measured(FamilyInstance fi) =>
-        fi.MEPModel is not Autodesk.Revit.DB.Mechanical.MechanicalFitting { } f || !NotMeasured.Contains(f.PartType);
+        !IsJoint(fi) && (fi.MEPModel is not Autodesk.Revit.DB.Mechanical.MechanicalFitting { } f || !NotMeasured.Contains(f.PartType));
+
+    /// <summary>A flange or gasket: by part type, or by family or type name (many flange families report another part type).</summary>
+    private static bool IsJoint(FamilyInstance fi) =>
+        fi.MEPModel is Autodesk.Revit.DB.Mechanical.MechanicalFitting { PartType: PartType.PipeFlange }
+        || new[] { fi.Symbol?.FamilyName, fi.Symbol?.Name }.Any(n => n is not null
+            && (n.Contains("flange", StringComparison.OrdinalIgnoreCase) || n.Contains("gasket", StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>
+    /// Where each flanged joint's flanges meet: mated flanges (and any gasket between) are one joint, centred between
+    /// its outer ends. A lone flange is measured at its face when that faces equipment or leaves the set. A joint
+    /// against a valve or other measured fitting is left out: that fitting's centre is dimensioned instead.
+    /// </summary>
+    private static List<XYZ> Joints(IReadOnlyList<FamilyInstance> flanges, HashSet<ElementId> ids)
+    {
+        var byId = flanges.ToDictionary(f => f.Id);
+        var uf = new UnionFind(byId.Keys);
+        foreach (var f in flanges)
+        foreach (var n in PipingElements.GetConnectedElements(f).Where(n => byId.ContainsKey(n.Id)))
+            uf.Union(f.Id, n.Id);
+
+        var points = new List<XYZ>();
+        foreach (var g in byId.Keys.GroupBy(uf.Find).Select(g => g.Select(id => byId[id]).ToList()))
+        {
+            var inside = g.Select(f => f.Id).ToHashSet();
+            var outer = g.SelectMany(Ends)
+                .Select(c => (c, Next: c.AllRefs.Cast<Connector>().FirstOrDefault(r => r.Owner is { } o && o.Id != c.Owner.Id && o is not MEPSystem)?.Owner))
+                .Where(x => x.Next is null || !inside.Contains(x.Next.Id))
+                .ToList();
+            if (outer.Any(x => x.Next is FamilyInstance fi && ids.Contains(fi.Id) && PipingElements.IsPiping(fi) && Measured(fi))) continue;
+
+            if (g.Count > 1 && outer.Count == 2) points.Add((outer[0].c.Origin + outer[1].c.Origin) / 2);
+            else if (g.Count == 1 && outer.FirstOrDefault(x => x.Next is null || !ids.Contains(x.Next.Id)) is { c: not null } face) points.Add(face.c.Origin);
+        }
+        return points;
+    }
 
     private static double Radius(Connector c) => c.Shape == ConnectorProfileType.Round ? c.Radius : 0;
 
