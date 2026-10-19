@@ -170,12 +170,19 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - It's colored by BC_LINE SEGMENT with Color Splasher, using a rainbow gradient by default. Either can be switched off; the choices are remembered for the session.
    - The line segments are tagged with `ISO Tag : Pipe Size System Tag`, in a column with shouldered leaders.
    - The crop is square. Every view uses the same corner and scale, so the views line up on sheets.
-5. **Dimensions** (tick **Add dimensions**; off by default and remembered for the session): each straight leg gets one chained dimension.
-   - It runs to the centre of every fitting and accessory on the leg (elbows, tees, valves, olets), using the family's centre reference plane that is square to the leg. It also runs to pipe ends that leave the selection.
-   - The string reads centre to centre, and the parts add up to the leg.
-   - It lies in the plane of the leg that faces the viewer most, offset outside the piping.
-   - Fittings with no centre reference planes are reported, not dimensioned.
+5. **Dimensions** (tick **Add dimensions**; off by default and remembered for the session): added the same way as **Auto Dimension** below.
 6. One undo removes all the views.
+
+**Auto Dimension** (Visualize panel) dimensions the piping in the active view the way a spool iso does. It uses the selected piping if any is selected, otherwise all piping visible in the view.
+1. **One chained dimension per straight leg.** It runs to the centre of every fitting and accessory on the leg (elbows, tees, olets, valves), and to pipe ends that leave the set. Each string reads centre to centre and adds up to the leg.
+2. **Centre references:**
+   - A fitting is measured to its family's centre reference plane that is square to the leg (Center Left/Right, Front/Back or Elevation).
+   - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre.
+   - Pipe ends use the pipe's centreline end.
+3. **Placement:** each dimension sits outside its spool.
+   - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
+   - **Plan or section:** each dimension lies in the view plane. Legs running towards the viewer have no length to show, so they're skipped.
+4. **Report:** the report says how many legs were dimensioned. For each leg Revit refused, it gives the pipe id and Revit's reason. One undo removes everything.
 
 ## Roadmap
 
