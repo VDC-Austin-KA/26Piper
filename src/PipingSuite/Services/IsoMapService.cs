@@ -12,7 +12,10 @@ namespace PipingSuite.Services;
 public enum IsoCorner { SouthWest, SouthEast, NorthEast, NorthWest }
 
 /// <param name="Scale">View scale denominator, e.g. 24 for 1/2" = 1'-0"; sets the tag size relative to the piping.</param>
-public sealed record IsoMapOptions(string ViewName, IsoCorner Corner, int Scale, string ColorParameter, bool Rainbow, bool TagSegments);
+/// <param name="Color">Colour per <paramref name="ColorParameter"/> value; off leaves the shaded piping as it is.</param>
+/// <param name="Dimension">Centre-to-centre dimensions along each straight leg (see <see cref="DimensionService"/>).</param>
+public sealed record IsoMapOptions(string ViewName, IsoCorner Corner, int Scale, string ColorParameter, bool Rainbow, bool TagSegments,
+    bool Color = true, bool Dimension = false);
 
 public sealed record IsoMapResult(View3D View, int ColoredValues, int Tags, IReadOnlyList<string> Warnings);
 
@@ -81,7 +84,7 @@ public sealed class IsoMapService(Document doc)
             .OrderBy(g => g.Key!, ColorSplasherService.NaturalComparer.Instance)
             .ToList();
         if (groups.Count == 0) warnings.Add($"No selected element has a \"{options.ColorParameter}\" value, so nothing was colored or tagged.");
-        Colorize(view, groups, options.Rainbow);
+        if (options.Color) Colorize(view, groups, options.Rainbow);
 
         int tags = 0;
         using (var t = new Transaction(doc, "ISO Map - Tags and crop"))
@@ -89,6 +92,13 @@ public sealed class IsoMapService(Document doc)
             t.Start();
             var frame = new ViewFrame(view);
             var extents = frame.Bounds(elements);
+            if (options.Dimension)
+            {
+                var dims = new DimensionService(doc).Dimension(view, elements);
+                warnings.AddRange(dims.Notes);
+                foreach (var d in dims.Dimensions)
+                    if (d.get_BoundingBox(view) is { } bb) extents = extents.Union(frame.Project(Corners(bb)));
+            }
             if (options.TagSegments && groups.Count > 0)
             {
                 if (FindTagType() is { } symbol)
