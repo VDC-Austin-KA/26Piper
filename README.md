@@ -167,9 +167,10 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - Views are named `ISO - DETAIL A`. Untyped configurations are named after their EZ-ISO line number, or `ISO - TYPE n`.
 4. **Each view** is made the way ISO Map makes its view:
    - It's a locked, shaded isometric showing only that configuration.
+   - It's colored by BC_LINE SEGMENT with Color Splasher, using a rainbow gradient by default. Either can be switched off; the choices are remembered for the session.
    - The line segments are tagged with `ISO Tag : Pipe Size System Tag`, in a column with shouldered leaders.
    - The crop is square. Every view uses the same corner and scale, so the views line up on sheets.
-5. **Dimensions:** each straight leg gets one chained dimension.
+5. **Dimensions** (tick **Add dimensions**; off by default and remembered for the session): each straight leg gets one chained dimension.
    - It runs to the centre of every fitting and accessory on the leg (elbows, tees, valves, olets), using the family's centre reference plane that is square to the leg. It also runs to pipe ends that leave the selection.
    - The string reads centre to centre, and the parts add up to the leg.
    - It lies in the plane of the leg that faces the viewer most, offset outside the piping.

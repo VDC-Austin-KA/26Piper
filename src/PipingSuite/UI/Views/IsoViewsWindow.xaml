@@ -25,10 +25,12 @@
 
         <CheckBox Content="Tag each line segment" IsChecked="{Binding Tag}" Margin="0,2,0,2" />
         <TextBlock Text="{Binding TagStatus}" TextWrapping="Wrap" Foreground="Gray" Margin="20,0,0,4" />
-        <CheckBox Content="Dimension each leg, centre to centre of fittings and valves" IsChecked="{Binding Dimension}" Margin="0,2,0,8" />
+        <CheckBox Content="Color by BC_LINE SEGMENT (Color Splasher)" IsChecked="{Binding Color}" Margin="0,2,0,2" />
+        <CheckBox Content="Rainbow gradient (otherwise distinct colors)" IsChecked="{Binding Rainbow}" IsEnabled="{Binding Color}" Margin="20,2,0,4" />
+        <CheckBox Content="Add dimensions: each leg, centre to centre of fittings and valves" IsChecked="{Binding Dimension}" Margin="0,2,0,8" />
 
         <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
-                   Text="Each view is a new locked, shaded isometric showing only its configuration, with tags stacked in a column and a square crop, all from the same corner and scale so they line up on sheets. One undo removes all the views." />
+                   Text="Each view is a new locked, shaded isometric showing only its configuration, colored per line segment, with tags stacked in a column and a square crop, all from the same corner and scale so they line up on sheets. One undo removes all the views." />
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Create" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />

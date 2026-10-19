@@ -57,7 +57,7 @@ public sealed class App : IExternalApplication
         AddButton<OverallMapCommand>(view, "Overall\nMap", "overall_map", "overall_map",
             "Key plan of the selection: duplicates the active plan and boxes each spool in a translucent color per PACKAGE value, with a legend.");
         AddButton<IsoViewsCommand>(view, "ISO\nViews", "iso_views", "iso_views",
-            "One locked isometric per DETAIL type (or per configuration) in the selection: line segments tagged in a column, every leg dimensioned centre to centre of its fittings and valves, cropped square for sheets.");
+            "One locked isometric per DETAIL type (or per configuration) in the selection: rainbow-colored and tagged by line segment, optionally dimensioned centre to centre of fittings and valves, cropped square for sheets.");
 
         application.ControlledApplication.ApplicationInitialized += (_, _) => AttachVideoTooltips();
         return Result.Succeeded;

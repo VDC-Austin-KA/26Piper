@@ -16,7 +16,8 @@ public sealed record ConfigurationType(string Name, IReadOnlyList<Configuration>
 
 /// <param name="DetailParameter">Parameter holding "DETAIL A"-style values; empty to group by build only.</param>
 /// <param name="OnePerType">One view per type (its first configuration); otherwise one view per configuration.</param>
-public sealed record IsoViewsOptions(IsoCorner Corner, int Scale, string DetailParameter, bool OnePerType, bool Tag, bool Dimension);
+/// <param name="Color">Colour Splasher by BC_LINE SEGMENT; <paramref name="Rainbow"/> for a rainbow gradient, else distinct colours.</param>
+public sealed record IsoViewsOptions(IsoCorner Corner, int Scale, string DetailParameter, bool OnePerType, bool Tag, bool Color, bool Rainbow, bool Dimension);
 
 public sealed record IsoViewsResult(IReadOnlyList<View3D> Views, IReadOnlyList<string> Notes);
 
@@ -92,7 +93,7 @@ public sealed class IsoViewsService(Document doc)
             foreach (var c in shown)
             {
                 var result = iso.Create(c.Elements, new IsoMapOptions($"ISO - {type.Name}", options.Corner, options.Scale,
-                    EzIsoService.SegmentParam, Rainbow: true, TagSegments: options.Tag, Color: false, Dimension: options.Dimension));
+                    EzIsoService.SegmentParam, options.Rainbow, TagSegments: options.Tag, Color: options.Color, Dimension: options.Dimension));
                 views.Add(result.View);
                 notes.AddRange(result.Warnings.Select(w => $"{result.View.Name}: {w}"));
             }
