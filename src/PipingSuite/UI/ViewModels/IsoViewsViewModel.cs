@@ -5,12 +5,12 @@ using PipingSuite.Services;
 
 namespace PipingSuite.UI.ViewModels;
 
-/// <summary>ISO Views corner / scale / DETAIL grouping / colour / dimensions. All but the grouping are remembered for the Revit session.</summary>
+/// <summary>ISO Views corner / scale / DETAIL grouping / colour / dimensions / BOM. All but the grouping are remembered for the Revit session.</summary>
 public sealed partial class IsoViewsViewModel : DialogViewModelBase
 {
     private static IsoCorner _lastCorner = IsoCorner.SouthWest;
     private static int _lastScale = 24;
-    private static bool _lastColor = true, _lastRainbow = true, _lastDimension;
+    private static bool _lastColor = true, _lastRainbow = true, _lastDimension, _lastBom;
 
     public IsoViewsViewModel(string summary, IReadOnlyList<string> types, string detailParameter, string tagStatus)
     {
@@ -23,6 +23,9 @@ public sealed partial class IsoViewsViewModel : DialogViewModelBase
         _color = _lastColor;
         _rainbow = _lastRainbow;
         _dimension = _lastDimension;
+        _bom = _lastBom;
+        _selectedBomSize = BomViewModel.SizeChoices.First(c => c.Value == BomViewModel.LastSize);
+        _selectedBomPlacement = BomViewModel.PlacementChoices.First(c => c.Value == BomViewModel.LastPlacement);
     }
 
     public string Summary { get; }
@@ -30,6 +33,8 @@ public sealed partial class IsoViewsViewModel : DialogViewModelBase
     public string TagStatus { get; }
     public IReadOnlyList<LabeledValue<IsoCorner>> Corners => IsoMapViewModel.CornerChoices;
     public IReadOnlyList<LabeledValue<int>> Scales => IsoMapViewModel.ScaleChoices;
+    public IReadOnlyList<LabeledValue<double?>> BomSizes => BomViewModel.SizeChoices;
+    public IReadOnlyList<LabeledValue<BomPlacement>> BomPlacements => BomViewModel.PlacementChoices;
 
     [ObservableProperty] private string _detailParameter;
     [ObservableProperty] private bool _onePerType = true;
@@ -39,12 +44,17 @@ public sealed partial class IsoViewsViewModel : DialogViewModelBase
     [ObservableProperty] private bool _color;
     [ObservableProperty] private bool _rainbow;
     [ObservableProperty] private bool _dimension;
+    [ObservableProperty] private bool _bom;
+    [ObservableProperty] private LabeledValue<double?> _selectedBomSize;
+    [ObservableProperty] private LabeledValue<BomPlacement> _selectedBomPlacement;
 
     public IsoViewsOptions ToOptions()
     {
         _lastCorner = SelectedCorner.Value;
         _lastScale = SelectedScale.Value;
-        (_lastColor, _lastRainbow, _lastDimension) = (Color, Rainbow, Dimension);
-        return new IsoViewsOptions(SelectedCorner.Value, SelectedScale.Value, DetailParameter.Trim(), OnePerType, Tag, Color, Rainbow, Dimension);
+        (_lastColor, _lastRainbow, _lastDimension, _lastBom) = (Color, Rainbow, Dimension, Bom);
+        (BomViewModel.LastSize, BomViewModel.LastPlacement) = (SelectedBomSize.Value, SelectedBomPlacement.Value);
+        return new IsoViewsOptions(SelectedCorner.Value, SelectedScale.Value, DetailParameter.Trim(), OnePerType, Tag, Color, Rainbow, Dimension,
+            Bom ? new BomOptions(SelectedBomSize.Value, SelectedBomPlacement.Value, SquareCrop: true) : null);
     }
 }

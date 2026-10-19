@@ -16,7 +16,7 @@ namespace PipingSuite.Commands;
 [Transaction(TransactionMode.Manual)]
 public sealed class AutoDimensionCommand : IExternalCommand
 {
-    private static readonly ElementMulticategoryFilter Piping = new(new List<BuiltInCategory>
+    internal static readonly ElementMulticategoryFilter Piping = new(new List<BuiltInCategory>
     {
         BuiltInCategory.OST_PipeCurves, BuiltInCategory.OST_PipeFitting, BuiltInCategory.OST_PipeAccessory,
     });

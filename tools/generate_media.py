@@ -277,6 +277,25 @@ def icon_auto_dim(d):
         d.line([(px - tvx * 6, py - tvy * 6), (px + tvx * 6, py + tvy * 6)], fill=INK, width=5)
 
 
+def icon_iso_bom(d):
+    K = 13
+    run = [(0, 0, 0), (4, 0, 0), (4, 0, 4)]                                # small iso spool, top left
+    raw = [_iso(*p, 0, 0, K) for p in run]
+    mx = (min(x for x, _ in raw) + max(x for x, _ in raw)) / 2
+    my = (min(y for _, y in raw) + max(y for _, y in raw)) / 2
+    pts = [(40 - mx + x, 40 - my + y) for x, y in raw]
+    for a, b in zip(pts, pts[1:]):
+        pipe(d, a, b, 10, PIPE)
+    # BOM table, bottom right: header row filled, ruled rows, item column
+    x0, y0, x1, y1, rows = 46, 62, 120, 120, 4
+    d.rectangle([x0, y0, x1, y1], fill=WHITE, outline=INK, width=4)
+    rh = (y1 - y0) / (rows + 1)
+    d.rectangle([x0, y0, x1, y0 + rh], fill=ORANGE, outline=INK, width=4)
+    for i in range(2, rows + 1):
+        d.line([(x0, y0 + i * rh), (x1, y0 + i * rh)], fill=INK, width=3)
+    d.line([(x0 + 18, y0), (x0 + 18, y1)], fill=INK, width=3)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -293,6 +312,7 @@ ICONS = {
     "ez_iso": icon_ez_iso,
     "iso_views": icon_iso_views,
     "auto_dim": icon_auto_dim,
+    "iso_bom": icon_iso_bom,
 }
 
 
@@ -710,6 +730,41 @@ def scene_auto_dim(t, d):
     caption(d, "Auto Dimension: centre-to-centre strings on every leg")
 
 
+def scene_iso_bom(t, d):
+    K = 13
+    nodes = [(0, 0, 0), (7.5, 0, 0), (7.5, 4, 0), (7.5, 4, 9)]
+    raw = [_iso(*p, 0, 0, K) for p in nodes]
+    mx = (min(x for x, _ in raw) + max(x for x, _ in raw)) / 2
+    my = (min(y for _, y in raw) + max(y for _, y in raw)) / 2
+    pts = [(95 - mx + x, 104 - my + y) for x, y in raw]
+    for a, b in zip(pts, pts[1:]):
+        pipe(d, s(*a), s(*b), 9 * SS)
+
+    rows = [("1", "6'-11\"", "2\"", "PIPE, CS SCH 40"), ("2", "2", "2\"", "ELBOW 90"), ("3", "1", "2\"", "GATE VALVE")]
+    # the same table at three sizes: small, medium, large
+    sizes = [(1.6, 0.9), (3.0, 1.25), (4.4, 1.6)]
+    k = 0 if t < sizes[0][0] else 1 if t < sizes[1][0] else 2
+    start = 0.6 if k == 0 else sizes[k - 1][0]
+    grow = phase(t, start, start + 0.5)
+    prev = sizes[k - 1][1] if k else 0.6
+    z = prev + (sizes[k][1] - prev) * grow
+    widths = [19, 26, 19, 56]
+    rh = 11 * z
+    x0, y0 = 180, 104 - rh * (len(rows) + 1) / 2
+    col = mix(BG, INK, min(1.0, phase(t, 0.6, 1.0) * 2))
+    f, fb = font(int(6 * z * SS)), font(int(6 * z * SS), True)
+    x = x0
+    for c, w in enumerate(widths):
+        w *= z
+        d.rectangle([s(x, y0), s(x + w, y0 + rh * (len(rows) + 1))], outline=col, width=SS)
+        d.text(s(x + w / 2, y0 + rh / 2), ["ITEM", "QTY", "SIZE", "DESCRIPTION"][c], font=fb, fill=col, anchor="mm")
+        d.line([s(x + 2, y0 + rh - 2), s(x + w - 2, y0 + rh - 2)], fill=col, width=SS)
+        for r, row in enumerate(rows):
+            d.text(s(x + w / 2, y0 + rh * (r + 1.5)), row[c], font=f, fill=col, anchor="mm")
+        x += w
+    caption(d, "ISO BOM: table drawn in the view" if k == 0 else "Pick a size (or fit it) to suit the sheet")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -725,6 +780,7 @@ SCENES = {
     "ez_iso": scene_ez_iso,
     "iso_views": scene_iso_views,
     "auto_dim": scene_auto_dim,
+    "iso_bom": scene_iso_bom,
 }
 
 
