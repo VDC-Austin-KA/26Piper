@@ -248,6 +248,35 @@ def icon_iso_views(d):
         tag(d, x0 + 8, 80, 40, 22, ORANGE, label, f)
 
 
+def icon_auto_dim(d):
+    K = 22
+    run = [(0, 0, 0), (4, 0, 0), (4, 0, 4)]                                # elbow: leg along x, then rise
+    raw = [_iso(*p, 0, 0, K) for p in run]
+    mx = (min(x for x, _ in raw) + max(x for x, _ in raw)) / 2
+    my = (min(y for _, y in raw) + max(y for _, y in raw)) / 2
+    pts = [(64 - mx + x, 56 - my + y) for x, y in raw]
+    for a, b in zip(pts, pts[1:]):
+        pipe(d, a, b, 12, PIPE)
+    # dimension line parallel to the x leg, offset outside the bend, ticks at both ends
+    (ax, ay), (bx, by) = pts[0], pts[1]
+    L = math.hypot(bx - ax, by - ay)
+    ux, uy = (bx - ax) / L, (by - ay) / L
+    nx, ny = -uy, ux
+    cxm = sum(x for x, _ in pts) / len(pts)
+    cym = sum(y for _, y in pts) / len(pts)
+    if (cxm - (ax + bx) / 2) * nx + (cym - (ay + by) / 2) * ny > 0:
+        nx, ny = -nx, -ny
+    off = 26
+    Ax, Ay = ax + nx * off, ay + ny * off
+    Bx, By = bx + nx * off, by + ny * off
+    for px, py in ((ax, ay), (bx, by)):
+        d.line([(px + nx * 4, py + ny * 4), (px + nx * (off + 4), py + ny * (off + 4))], fill=INK, width=4)
+    d.line([(Ax, Ay), (Bx, By)], fill=INK, width=5)
+    tvx, tvy = (ux + nx) / 1.414, (uy + ny) / 1.414
+    for px, py in ((Ax, Ay), (Bx, By)):
+        d.line([(px - tvx * 6, py - tvy * 6), (px + tvx * 6, py + tvy * 6)], fill=INK, width=5)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -263,6 +292,7 @@ ICONS = {
     "heal": icon_heal,
     "ez_iso": icon_ez_iso,
     "iso_views": icon_iso_views,
+    "auto_dim": icon_auto_dim,
 }
 
 
@@ -614,6 +644,72 @@ def scene_iso_views(t, d):
     caption(d, "One tagged, dimensioned ISO view per DETAIL type")
 
 
+def scene_auto_dim(t, d):
+    K = 15
+    # plan nodes: pipe ends and elbow centres; 1 plan unit = 4 in, so the legs read 2'-6", 1'-4", 3'-0"
+    nodes = [(0, 0, 0), (7.5, 0, 0), (7.5, 4, 0), (7.5, 4, 9)]
+    raw = [_iso(*p, 0, 0, K) for p in nodes]
+    mx = (min(x for x, _ in raw) + max(x for x, _ in raw)) / 2
+    my = (min(y for _, y in raw) + max(y for _, y in raw)) / 2
+
+    def sc(p):                                                            # iso point, spool bbox centred on the frame
+        x, y = _iso(*p, 0, 0, K)
+        return (200 - mx + x, 100 - my + y)
+
+    def along(a, b, k):
+        return (a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k)
+
+    legs = [(nodes[0], nodes[1], "2'-6\""), (nodes[1], nodes[2], "1'-4\""), (nodes[2], nodes[3], "3'-0\"")]
+    for i, (a, b, _) in enumerate(legs):                                  # phase 1: spool draws leg by leg
+        grow = phase(t, 0.2 + i * 0.5, 0.9 + i * 0.5)
+        if grow > 0:
+            pa = sc(a)
+            pipe(d, s(*pa), s(*along(pa, sc(b), grow)), 10 * SS)
+    vp = phase(t, 1.5, 1.9)                                               # valve pops in mid-way along leg B
+    if vp > 0:
+        pa, pb = sc(nodes[1]), sc(nodes[2])
+        vx, vy = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+        L = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
+        ux, uy = (pb[0] - pa[0]) / L, (pb[1] - pa[1]) / L
+        nx, ny = -uy, ux
+        r, h = 5 * vp, 9 * vp                                             # bow-tie valve: bases across the pipe
+        for sign in (-1, 1):
+            bxv, byv = vx + ux * r * sign, vy + uy * r * sign
+            d.polygon([s(bxv + nx * h, byv + ny * h), s(bxv - nx * h, byv - ny * h), s(vx, vy)], fill=INK)
+
+    cen = (sum(sc(p)[0] for p in nodes) / len(nodes), sum(sc(p)[1] for p in nodes) / len(nodes))
+    for i, (a, b, text) in enumerate(legs):                               # phase 2: one string per leg
+        dp = phase(t, 2.2 + i * 0.9, 2.8 + i * 0.9)
+        if dp <= 0:
+            continue
+        pa, pb = sc(a), sc(b)
+        L = math.hypot(pb[0] - pa[0], pb[1] - pa[1])
+        ux, uy = (pb[0] - pa[0]) / L, (pb[1] - pa[1]) / L
+        nx, ny = -uy, ux
+        if (cen[0] - (pa[0] + pb[0]) / 2) * nx + (cen[1] - (pa[1] + pb[1]) / 2) * ny > 0:
+            nx, ny = -nx, -ny                                             # offset outside the spool
+        off = 12
+        A = (pa[0] + nx * off, pa[1] + ny * off)
+        B = (pb[0] + nx * off, pb[1] + ny * off)
+        E = along(A, B, dp)
+        dc = mix(BG, INK, dp)
+        for px, py in (pa, pb):                                           # extension lines
+            d.line([s(px + nx * 3, py + ny * 3), s(px + nx * (off + 3), py + ny * (off + 3))], fill=dc, width=SS)
+        d.line([s(*A), s(*E)], fill=dc, width=SS)
+        tvx, tvy = (ux + nx) / 1.414, (uy + ny) / 1.414                   # 45 degree architectural ticks
+        ticks = [A, B]
+        if i == 1:                                                        # valve centre tick on leg B
+            vx, vy = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
+            d.line([s(vx + nx * 3, vy + ny * 3), s(vx + nx * (off + 3), vy + ny * (off + 3))], fill=dc, width=SS)
+            ticks.append(((A[0] + B[0]) / 2, (A[1] + B[1]) / 2))
+        for px, py in ticks:
+            d.line([s(px - tvx * 3, py - tvy * 3), s(px + tvx * 3, py + tvy * 3)], fill=dc, width=2 * SS)
+        if dp > 0.99:
+            d.text(s((A[0] + B[0]) / 2 + nx * 9, (A[1] + B[1]) / 2 + ny * 9), text,
+                   font=font(8 * SS, True), fill=INK, anchor="mm")
+    caption(d, "Auto Dimension: centre-to-centre strings on every leg")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -628,6 +724,7 @@ SCENES = {
     "heal": scene_heal,
     "ez_iso": scene_ez_iso,
     "iso_views": scene_iso_views,
+    "auto_dim": scene_auto_dim,
 }
 
 
