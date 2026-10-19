@@ -157,6 +157,25 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - **Check:** needs a person, e.g. a line with no BC_SYSTEM anywhere near it. Listed, not fixed.
 5. **Window:** **Zoom** selects an item and zooms to it in Revit. **Fix ticked** applies the fixes in one undo: values first, then connections. Then it rescans. **Select for EZ-ISO** selects the checked piping, so EZ-ISO's Auto Line Nos can run on it.
 
+**ISO Views** (Visualize panel) makes a tagged, dimensioned isometric for each configuration type in the selection:
+1. **Scope:** preselect, or window-select when prompted, the configurations (branches, spools). Each connected piece of the selection is one configuration.
+2. **Types:** the tool finds the parameter whose values look like `DETAIL A` (`DETAIL` + letters) and groups configurations by that value.
+   - Configurations without a DETAIL value are grouped by how they're built: pipe types with cut lengths to 1/16", plus fitting and valve types, whichever way they face.
+   - The dialog lists the types found. It also notes a DETAIL whose configurations are built differently, and different DETAILs that are built alike.
+   - You can type another parameter, or clear it to group by build only.
+3. **One view per type** (default) shows the first configuration of each type. Untick it for one view per configuration.
+   - Views are named `ISO - DETAIL A`. Untyped configurations are named after their EZ-ISO line number, or `ISO - TYPE n`.
+4. **Each view** is made the way ISO Map makes its view:
+   - It's a locked, shaded isometric showing only that configuration.
+   - The line segments are tagged with `ISO Tag : Pipe Size System Tag`, in a column with shouldered leaders.
+   - The crop is square. Every view uses the same corner and scale, so the views line up on sheets.
+5. **Dimensions:** each straight leg gets one chained dimension.
+   - It runs to the centre of every fitting and accessory on the leg (elbows, tees, valves, olets), using the family's centre reference plane that is square to the leg. It also runs to pipe ends that leave the selection.
+   - The string reads centre to centre, and the parts add up to the leg.
+   - It lies in the plane of the leg that faces the viewer most, offset outside the piping.
+   - Fittings with no centre reference planes are reported, not dimensioned.
+6. One undo removes all the views.
+
 ## Roadmap
 
 **Feature B – view filters**

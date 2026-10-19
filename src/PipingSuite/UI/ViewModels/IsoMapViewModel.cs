@@ -25,7 +25,7 @@ public sealed partial class IsoMapViewModel : DialogViewModelBase
     public IReadOnlyList<string> Packages { get; }
     public string TagStatus { get; }
 
-    public IReadOnlyList<LabeledValue<IsoCorner>> Corners { get; } =
+    public static IReadOnlyList<LabeledValue<IsoCorner>> CornerChoices { get; } =
     [
         new("South-west (looking north-east)", IsoCorner.SouthWest),
         new("South-east (looking north-west)", IsoCorner.SouthEast),
@@ -33,7 +33,7 @@ public sealed partial class IsoMapViewModel : DialogViewModelBase
         new("North-west (looking south-east)", IsoCorner.NorthWest),
     ];
 
-    public IReadOnlyList<LabeledValue<int>> Scales { get; } =
+    public static IReadOnlyList<LabeledValue<int>> ScaleChoices { get; } =
     [
         new("1/8\" = 1'-0\"", 96),
         new("3/16\" = 1'-0\"", 64),
@@ -43,6 +43,9 @@ public sealed partial class IsoMapViewModel : DialogViewModelBase
         new("3/4\" = 1'-0\"", 16),
         new("1\" = 1'-0\"", 12),
     ];
+
+    public IReadOnlyList<LabeledValue<IsoCorner>> Corners => CornerChoices;
+    public IReadOnlyList<LabeledValue<int>> Scales => ScaleChoices;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ViewName))]

@@ -1,0 +1,38 @@
+<Window x:Class="PipingSuite.UI.Views.IsoViewsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ISO Views" Width="440" SizeToContent="Height"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="12">
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <ItemsControl ItemsSource="{Binding Types}" Margin="12,0,0,10" MaxHeight="160">
+            <ItemsControl.Template>
+                <ControlTemplate>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"><ItemsPresenter /></ScrollViewer>
+                </ControlTemplate>
+            </ItemsControl.Template>
+        </ItemsControl>
+
+        <TextBlock Text="Type parameter (values like &quot;DETAIL A&quot;; empty = type by how it's built)" TextWrapping="Wrap" />
+        <TextBox Text="{Binding DetailParameter, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,4" />
+        <CheckBox Content="One view per type (otherwise one per configuration)" IsChecked="{Binding OnePerType}" Margin="0,2,0,8" />
+
+        <TextBlock Text="Lock the isometrics from corner" />
+        <ComboBox ItemsSource="{Binding Corners}" SelectedItem="{Binding SelectedCorner}" Margin="0,2,0,8" />
+
+        <TextBlock Text="View scale (sets tag and dimension size against the piping)" />
+        <ComboBox ItemsSource="{Binding Scales}" SelectedItem="{Binding SelectedScale}" Margin="0,2,0,8" />
+
+        <CheckBox Content="Tag each line segment" IsChecked="{Binding Tag}" Margin="0,2,0,2" />
+        <TextBlock Text="{Binding TagStatus}" TextWrapping="Wrap" Foreground="Gray" Margin="20,0,0,4" />
+        <CheckBox Content="Dimension each leg, centre to centre of fittings and valves" IsChecked="{Binding Dimension}" Margin="0,2,0,8" />
+
+        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                   Text="Each view is a new locked, shaded isometric showing only its configuration, with tags stacked in a column and a square crop, all from the same corner and scale so they line up on sheets. One undo removes all the views." />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Create" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

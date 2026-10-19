@@ -12,7 +12,10 @@ namespace PipingSuite.Services;
 public enum IsoCorner { SouthWest, SouthEast, NorthEast, NorthWest }
 
 /// <param name="Scale">View scale denominator, e.g. 24 for 1/2" = 1'-0"; sets the tag size relative to the piping.</param>
-public sealed record IsoMapOptions(string ViewName, IsoCorner Corner, int Scale, string ColorParameter, bool Rainbow, bool TagSegments);
+/// <param name="Color">Colour per <paramref name="ColorParameter"/> value; off leaves the shaded piping as it is.</param>
+/// <param name="Dimension">Centre-to-centre dimensions along each straight leg (see <see cref="IsoMapService"/>.Dimensions).</param>
+public sealed record IsoMapOptions(string ViewName, IsoCorner Corner, int Scale, string ColorParameter, bool Rainbow, bool TagSegments,
+    bool Color = true, bool Dimension = false);
 
 public sealed record IsoMapResult(View3D View, int ColoredValues, int Tags, IReadOnlyList<string> Warnings);
 
@@ -23,7 +26,7 @@ public sealed record IsoMapResult(View3D View, int ColoredValues, int Tags, IRea
 /// chosen to make the content + tags as square as possible, then the crop is made square, so the view
 /// packs well onto a sheet. One undo reverts the whole view.
 /// </summary>
-public sealed class IsoMapService(Document doc)
+public sealed partial class IsoMapService(Document doc)
 {
     public const string TagFamily = "ISO Tag";
     public const string TagType = "Pipe Size System Tag";
@@ -81,7 +84,7 @@ public sealed class IsoMapService(Document doc)
             .OrderBy(g => g.Key!, ColorSplasherService.NaturalComparer.Instance)
             .ToList();
         if (groups.Count == 0) warnings.Add($"No selected element has a \"{options.ColorParameter}\" value, so nothing was colored or tagged.");
-        Colorize(view, groups, options.Rainbow);
+        if (options.Color) Colorize(view, groups, options.Rainbow);
 
         int tags = 0;
         using (var t = new Transaction(doc, "ISO Map - Tags and crop"))
@@ -89,6 +92,8 @@ public sealed class IsoMapService(Document doc)
             t.Start();
             var frame = new ViewFrame(view);
             var extents = frame.Bounds(elements);
+            if (options.Dimension)
+                foreach (var r in Dimensions(view, frame, elements, warnings)) extents = extents.Union(r);
             if (options.TagSegments && groups.Count > 0)
             {
                 if (FindTagType() is { } symbol)
