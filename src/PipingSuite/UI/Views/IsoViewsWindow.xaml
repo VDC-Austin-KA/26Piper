@@ -20,14 +20,13 @@
         <TextBlock Text="Lock the isometrics from corner" />
         <ComboBox ItemsSource="{Binding Corners}" SelectedItem="{Binding SelectedCorner}" Margin="0,2,0,8" />
 
-        <TextBlock Text="View scale (sets tag and dimension size against the piping)" />
+        <TextBlock Text="View scale (sets tag size against the piping)" />
         <ComboBox ItemsSource="{Binding Scales}" SelectedItem="{Binding SelectedScale}" Margin="0,2,0,8" />
 
         <CheckBox Content="Tag each line segment" IsChecked="{Binding Tag}" Margin="0,2,0,2" />
         <TextBlock Text="{Binding TagStatus}" TextWrapping="Wrap" Foreground="Gray" Margin="20,0,0,4" />
         <CheckBox Content="Color by BC_LINE SEGMENT (Color Splasher)" IsChecked="{Binding Color}" Margin="0,2,0,2" />
         <CheckBox Content="Rainbow gradient (otherwise distinct colors)" IsChecked="{Binding Rainbow}" IsEnabled="{Binding Color}" Margin="20,2,0,4" />
-        <CheckBox Content="Add dimensions: each leg, centre to centre of fittings and valves" IsChecked="{Binding Dimension}" Margin="0,2,0,2" />
         <CheckBox Content="Add a BOM table (size and side below; ISO BOM changes it later)" IsChecked="{Binding Bom}" Margin="0,2,0,2" />
         <Grid Margin="20,2,0,8" IsEnabled="{Binding Bom}">
             <Grid.ColumnDefinitions>

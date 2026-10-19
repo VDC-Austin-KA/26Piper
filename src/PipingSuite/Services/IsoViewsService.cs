@@ -18,7 +18,7 @@ public sealed record ConfigurationType(string Name, IReadOnlyList<Configuration>
 /// <param name="OnePerType">One view per type (its first configuration); otherwise one view per configuration.</param>
 /// <param name="Color">Colour Splasher by BC_LINE SEGMENT; <paramref name="Rainbow"/> for a rainbow gradient, else distinct colours.</param>
 /// <param name="Bom">Bill of materials table in each view; null for none.</param>
-public sealed record IsoViewsOptions(IsoCorner Corner, int Scale, string DetailParameter, bool OnePerType, bool Tag, bool Color, bool Rainbow, bool Dimension,
+public sealed record IsoViewsOptions(IsoCorner Corner, int Scale, string DetailParameter, bool OnePerType, bool Tag, bool Color, bool Rainbow,
     BomOptions? Bom = null);
 
 public sealed record IsoViewsResult(IReadOnlyList<View3D> Views, IReadOnlyList<string> Notes);
@@ -26,8 +26,8 @@ public sealed record IsoViewsResult(IReadOnlyList<View3D> Views, IReadOnlyList<s
 /// <summary>
 /// ISO Views: splits a selection into configurations (connected pieces), sorts them into types by their
 /// DETAIL value (or, without one, by how they're built), and makes a locked isometric of each type the way
-/// ISO Map does: only that configuration shown, line segments tagged in a column, centre-to-centre
-/// dimensions along every leg, and a square crop, all from the same corner and scale so they line up on sheets.
+/// ISO Map does: only that configuration shown, coloured and tagged by line segment, and a square crop, all from
+/// the same corner and scale so they line up on sheets.
 /// </summary>
 public sealed class IsoViewsService(Document doc)
 {
@@ -95,7 +95,7 @@ public sealed class IsoViewsService(Document doc)
             foreach (var c in shown)
             {
                 var result = iso.Create(c.Elements, new IsoMapOptions($"ISO - {type.Name}", options.Corner, options.Scale,
-                    EzIsoService.SegmentParam, options.Rainbow, TagSegments: options.Tag, Color: options.Color, Dimension: options.Dimension, Bom: options.Bom));
+                    EzIsoService.SegmentParam, options.Rainbow, TagSegments: options.Tag, Color: options.Color, Bom: options.Bom));
                 views.Add(result.View);
                 notes.AddRange(result.Warnings.Select(w => $"{result.View.Name}: {w}"));
             }
