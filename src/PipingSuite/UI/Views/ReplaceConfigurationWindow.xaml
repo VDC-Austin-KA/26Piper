@@ -1,35 +1,87 @@
 <Window x:Class="PipingSuite.UI.Views.ReplaceConfigurationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Replace Configuration" Width="440" SizeToContent="Height"
-        ShowInTaskbar="False" ResizeMode="NoResize">
-    <StackPanel Margin="12">
-        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,8" />
+        Title="Replace Configuration - review" Width="1250" Height="720" MinWidth="900" MinHeight="480"
+        ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,8">
+            <Run Text="Correct branch legs (header out): " Foreground="Gray" /><Run Text="{Binding Correct, Mode=OneWay}" />
+        </TextBlock>
 
-        <CheckBox Content="Number each placement" IsChecked="{Binding Number}" Margin="0,2,0,4" />
-        <Grid Margin="20,0,0,8" IsEnabled="{Binding Number}">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Bottom">
+                <CheckBox Content="Keep the review view" IsChecked="{Binding KeepReviewView}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                <Button Content="Replace ticked" Padding="12,2" IsDefault="True" Command="{Binding AcceptCommand}" />
+                <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+            </StackPanel>
+
+            <!-- Numbering, one value per placement in list order -->
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                <CheckBox Content="Number each placement:" IsChecked="{Binding Number}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <ComboBox ItemsSource="{Binding Parameters}" SelectedItem="{Binding SelectedParameter}" Width="170" IsEnabled="{Binding Number}" />
+                <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" Width="200" Margin="6,0" IsEnabled="{Binding Number}" />
+                <TextBlock Text="from" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBox Text="{Binding Start, UpdateSourceTrigger=PropertyChanged}" Width="110" IsEnabled="{Binding Number}" />
+                <TextBlock Text="{Binding Preview}" Foreground="Gray" VerticalAlignment="Center" Margin="8,0,0,0" />
+            </StackPanel>
+        </DockPanel>
+
+        <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
-            </Grid.RowDefinitions>
-            <TextBlock Text="Parameter" VerticalAlignment="Center" Margin="0,0,8,4" />
-            <ComboBox Grid.Column="1" ItemsSource="{Binding Parameters}" SelectedItem="{Binding SelectedParameter}" Margin="0,0,0,4" />
-            <TextBlock Grid.Row="1" Text="Increase" VerticalAlignment="Center" Margin="0,0,8,4" />
-            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" Margin="0,0,0,4" />
-            <TextBlock Grid.Row="2" Text="First value" VerticalAlignment="Center" Margin="0,0,8,4" />
-            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Start, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4" />
-            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Preview}" Foreground="Gray" TextWrapping="Wrap" />
+
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <Button DockPanel.Dock="Right" Content="Tick all / none" Padding="8,1" Command="{Binding TickAllCommand}" />
+                    <TextBlock Text="{Binding Count}" VerticalAlignment="Center" Foreground="Gray" />
+                </DockPanel>
+                <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E0E0E0" SelectionMode="Single">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding Include, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanReplace}" HorizontalAlignment="Center" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="#" Binding="{Binding No}" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Status" Binding="{Binding Status}" IsReadOnly="True" Width="150" />
+                        <DataGridTextColumn Header="Nearest grid" Binding="{Binding Grid}" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Header" Binding="{Binding Header}" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Old legs (header out)" Binding="{Binding Legs}" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Correct legs stretched" Binding="{Binding Stretch}" IsReadOnly="True" />
+                        <DataGridTextColumn Header="Pipe length" Binding="{Binding Pipe}" IsReadOnly="True" />
+                        <DataGridTemplateColumn Header="">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Button Content="Show" Padding="6,0" ToolTip="Select and zoom to it in Revit"
+                                            Command="{Binding DataContext.ShowCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" CommandParameter="{Binding}" />
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" />
+
+            <DockPanel Grid.Column="2">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                    <Border Background="#E8871E" Width="12" Height="12" Margin="0,0,4,0" /><TextBlock Text="to replace" Margin="0,0,12,0" />
+                    <Border Background="#A0A0A0" Width="12" Height="12" Margin="0,0,4,0" /><TextBlock Text="can't fit" Margin="0,0,12,0" />
+                    <Border Background="#3F9B5A" Width="12" Height="12" Margin="0,0,4,0" /><TextBlock Text="correct branch" />
+                </StackPanel>
+                <Border BorderBrush="#C8C8C8" BorderThickness="1">
+                    <ContentControl x:Name="PreviewHost">
+                        <TextBlock Text="Preview unavailable: use Show to see each branch in Revit." Foreground="Gray" Margin="12" TextWrapping="Wrap" />
+                    </ContentControl>
+                </Border>
+            </DockPanel>
         </Grid>
-
-        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
-                   Text="Each old branch's header was found automatically. The old branch is deleted and the correct one is copied onto that same header connection, turned to run the same way, then reconnected to its header and anything else the old branch was connected to. Placements (and numbering) go along the header, lowest first. A placement that fails keeps its old branch. One undo reverts everything." />
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Replace" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
-            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
-        </StackPanel>
-    </StackPanel>
+    </DockPanel>
 </Window>

@@ -148,13 +148,17 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - **Allowed to differ:** valves, olets and unions never have to match, since those are what's wrong with the bad branches. Up always stays up.
    - **Where matches are found:** every tee side outlet and olet outlet of the right size and system type in the model is checked.
    - **Report:** the tool says how many were checked and why the rest didn't match (different number of legs, run in other directions, different leg lengths, pipe size).
-5. **Review in the model:** every branch to be replaced is selected and zoomed to, inside a live Revit pick. You can pan, zoom and orbit. Shift+click a branch to drop it, Ctrl+click elements of another branch to add it, then Finish.
-6. **Numbering (optional):** pick a parameter and step either its last number (`01 → 02`, `09 → 10`) or its last letter (`DETAIL A → DETAIL B`, `Z → AA`) for each placement. Placements are numbered along the direction they spread out most, lowest coordinate first.
+5. **Review window:** every branch found is listed before anything changes, in placement (and numbering) order, beside a live **preview**. The preview is a new isometric, `REPLACE CONFIG - REVIEW`, showing only the branches to replace (orange), those that can't take the correct branch (grey) and the correct branch (green). You can orbit and zoom it in the window.
+   - **For each branch:** the **nearest grid intersection** (e.g. `C-4 (2'-3")`), its header, its **legs** (header out, measured corner to corner) and its total **pipe length**. Also how much each leg of the correct branch is **stretched (+) or shortened (−)** to land where the old one did. The correct branch's own legs are shown above the list.
+   - **Branches that can't be fitted** are listed too, unticked, with the reason, instead of being dropped silently.
+   - Untick any branch to leave it alone; **Tick all / none** toggles them. **Show** selects and zooms to a branch in Revit.
+   - The review view is deleted afterwards unless **Keep the review view** is ticked.
+6. **Numbering (optional, in the same window):** pick a parameter and step either its last number (`01 → 02`, `09 → 10`) or its last letter (`DETAIL A → DETAIL B`, `Z → AA`) for each placement, in list order. Placements are ordered along the direction they spread out most, lowest coordinate first.
 7. **Replace:** each old branch is deleted, and the correct one is copied onto that branch's header connection, turned (about vertical) so its legs run the same way.
    - **Stretch to fit:** each leg is then stretched or shortened to the old branch's length for that leg. Lengths are measured between the corners where the centrelines meet, so elbow sizes don't matter. The longest pipe in the leg takes up the difference and everything beyond it moves with it, so valves keep their distance from the header and the far end lands exactly where the old branch ended.
    - **Reconnect:** the branch is then reconnected to the header and to everything the old branch was connected to.
    - **With olets:** a new olet of the correct type is made on the same header pipe at the same spot.
-- Each placement is its own transaction inside one undo group, and Revit warnings are suppressed. A placement Revit rejects keeps its old branch, and the report gives the reason.
+- Each placement is its own transaction inside one undo group, and Revit warnings are suppressed. A placement that fails for any reason keeps its old branch, the rest carry on, and the report gives the reason.
 
 **Connect Disconnects** (Routing panel) finds and fixes pieces that touch but aren't connected:
 1. **Scope:** preselect, or window-select when prompted, the piping to check. Only the selection is checked, so it's quick on any model. Each open end looks at what is right there, selected or not, so a selected branch can still be joined to an unselected header. Olets on or at the selected pipes are always included, even if they weren't picked: an unattached olet isn't connected to anything, so selecting only its header and branch would otherwise never reach it.
