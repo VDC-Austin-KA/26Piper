@@ -188,6 +188,12 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - **Plan or section:** each dimension lies in the view plane. Legs running towards the viewer have no length to show, so they're skipped.
 4. **Report:** the report says how many legs were dimensioned. For each leg Revit refused, it gives the pipe id and Revit's reason. One undo removes everything.
 
+**Auto Tag** (Visualize panel) tags the piping in the active view once per unique value. It uses the selected piping if any is selected, otherwise all piping visible in the view.
+1. **Tag and parameter:** pick any loaded pipe tag (`ISO Tag : Pipe Size System Tag` is listed first) and what to group by. The default is the EZ-ISO line number `{BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}`; any text parameter on the pipes can be picked instead. The dialog previews how many tags it will place and for which values.
+2. **One tag per value:** a header `TWCS-PKG6-01` with six identical `TWCS-PKG6-DETAIL A` branches gets two tags. Add a branch whose BC_LINE SEGMENT is `DETAIL B` and it gets three. Piping without a value isn't tagged.
+3. **Placement:** each tag goes on its line's longest pipe, stacked in a column with shouldered leaders the way ISO Map does. If the tags land outside the crop, the crop widens to show them. A 3D view is locked first, if needed.
+4. **Re-run** to update: tags of the chosen type already on this piping in the view are replaced, so there is still exactly one per value. One undo removes them.
+
 **ISO BOM** (Visualize panel) adds a bill of materials table to the active view, usually an ISO view. It lists the selected piping if any is selected, otherwise all piping visible in the view.
 1. **Columns:** ITEM, QTY, SIZE, DESCRIPTION.
    - Pipe is listed by segment (material and schedule) and size, with its total length as the quantity.

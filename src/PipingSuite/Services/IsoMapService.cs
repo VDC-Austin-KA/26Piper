@@ -129,7 +129,7 @@ public sealed class IsoMapService(Document doc)
     /// whose leaders cross the fewest pipes.
     /// </summary>
     /// <returns>The tag rectangles in the view's crop frame.</returns>
-    private List<Rect2> PlaceTags(View3D view, ViewFrame frame, FamilySymbol symbol, IReadOnlyList<Element> elements,
+    internal List<Rect2> PlaceTags(View view, ViewFrame frame, FamilySymbol symbol, IReadOnlyList<Element> elements,
         IReadOnlyList<IGrouping<string?, Element>> groups, List<string> warnings)
     {
         var created = new List<(IndependentTag Tag, Curve Curve)>();
