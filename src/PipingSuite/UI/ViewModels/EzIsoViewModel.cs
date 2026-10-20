@@ -26,14 +26,17 @@ public sealed partial class EzIsoItem(EzIsoIssue issue) : ObservableObject
     public string Action => Issue.Kind switch
     {
         EzIsoKind.Renumber => "New number",
+        EzIsoKind.Share => "Same as config",
         EzIsoKind.Fill => "Fill values",
         EzIsoKind.Outlier => "Match line",
+        EzIsoKind.MatchDetail => "Match DETAIL",
         EzIsoKind.Connect => "Connect",
         _ => "Check",
     };
 
-    // Empty values and duplicate/unnumbered lines are fixed by default; outliers and connections are the user's call.
-    [ObservableProperty] private bool _isChecked = issue.Kind is EzIsoKind.Fill or EzIsoKind.Renumber;
+    // Empty values, unnumbered lines and duplicates are fixed by default; anything that changes an existing number,
+    // and connections, are the user's call.
+    [ObservableProperty] private bool _isChecked = issue.Kind is EzIsoKind.Fill or EzIsoKind.Renumber or EzIsoKind.Share;
 }
 
 public sealed partial class EzIsoViewModel : ObservableObject

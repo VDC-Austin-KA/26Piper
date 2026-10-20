@@ -47,7 +47,7 @@ public sealed class App : IExternalApplication
         AddButton<ReplaceConfigurationCommand>(routing, "Replace\nConfig", "replace", "replace",
             "Swap every branch laid out like a picked one (same system) for a correctly built branch or assembly, reconnected to its header, with optional numbering.");
         AddButton<EzIsoCheckCommand>(routing, "EZ-ISO\nCheck", "ez_iso", "ez_iso",
-            "Check line numbers ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) for EZ-ISO's Auto Line Nos: correct lines are left alone; empty values, outliers, duplicate and unnumbered lines and touching-but-unconnected taps are listed with a fix.");
+            "Check line numbers ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) for EZ-ISO's Auto Line Nos: correct lines, identical branches sharing a number and DETAIL values are left alone; empty values, outliers, duplicate and unnumbered lines and touching-but-unconnected taps are listed with a fix.");
 
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",

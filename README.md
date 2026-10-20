@@ -149,12 +149,16 @@ Color schemes save to and load from `.json` files. The window stays open while y
    - A header numbered straight through its tees, or a vent carrying its pipe's number, stays one line: touching pieces that already share a number are never split.
    - A line's number is the one most of its elements carry. A line with no BC_SYSTEM or BC_PACKAGE borrows them from the line it comes off.
 3. **Correct lines are left alone:** a line whose elements all agree and whose number no other line uses is not listed and never changed.
+   - **Identical branches may share a number.** One EZ-ISO serves every branch built the same way, so branches sharing a BC_LINE SEGMENT aren't duplicates when they're built alike: the same fitting and valve types, and the same pipe types with lengths within 1/2". Only lines touching just the line they come off count as branches; headers still need their own `##`.
+   - **DETAIL values are never overwritten.** A BC_LINE SEGMENT containing `DETAIL` (e.g. `DETAIL A`) is the reference for an EZ-ISO. No fix writes over one, even if the scan proposed it, and a DETAIL line is never renumbered. A line with a DETAIL value on any element takes that as its number.
 4. **What it lists:**
    - **Fill values** (ticked): fittings, valves and olets with an empty BC_ value get their line's.
-   - **New number** (ticked): a duplicate (a separate line with the same number, usually a copied branch) or an unnumbered line gets the next free BC_LINE SEGMENT for its system and package. That is the one after the highest anywhere in the model, with the same zero padding (`06 → 07`). Of the duplicates, the longest line keeps its number.
+   - **Same as config** (ticked): an unnumbered branch built like numbered ones gets their BC_LINE SEGMENT, a DETAIL value first.
+   - **New number** (ticked): a duplicate (a separate line or configuration with the same number) or an unnumbered line gets the next free BC_LINE SEGMENT for its system and package. That is the one after the highest numbered segment anywhere in the model, with the same zero padding (`06 → 07`); DETAIL values don't count. Of the duplicates, the longest keeps its number. Identical branches get one new number between them.
+   - **Match DETAIL** (unticked): a numbered branch built like `DETAIL` branches but carrying another number can take the DETAIL value.
    - **Match line** (unticked): a few elements carrying a different number than the rest of their line are set back to the line's number.
    - **Connect** (unticked): a tap or olet sitting on a pipe without being attached, or ends touching without being connected (within 1/8"). These are fixed the way Connect Disconnects does it.
-   - **Check:** needs a person, e.g. a line with no BC_SYSTEM anywhere near it. Listed, not fixed.
+   - **Check:** needs a person, e.g. a line with no BC_SYSTEM anywhere near it, or one DETAIL shared by branches that aren't built alike. Listed, not fixed.
 5. **Window:** **Zoom** selects an item and zooms to it in Revit. **Fix ticked** applies the fixes in one undo: values first, then connections. Then it rescans. **Select for EZ-ISO** selects the checked piping, so EZ-ISO's Auto Line Nos can run on it.
 
 **ISO Views** (Visualize panel) makes a tagged, dimensioned isometric for each configuration type in the selection:
