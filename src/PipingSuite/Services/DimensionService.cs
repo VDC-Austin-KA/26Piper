@@ -49,8 +49,10 @@ public sealed class DimensionService(Document doc)
         double offset = DimOffsetInches / 12 * view.Scale;
 
         var runs = Runs(piping.OfType<MEPCurve>());
-        int edgeOn = 0, noReference = 0;
+        int edgeOn = 0;
         var refused = new List<string>();
+        var missing = new List<string>();  // fittings and pipe ends with nothing to measure to
+        var rejected = new List<string>(); // references Revit wouldn't dimension to, left out of their leg
         foreach (var run in runs)
         {
             double T(XYZ p) => (p - run.Origin).DotProduct(run.Dir);
@@ -62,7 +64,7 @@ public sealed class DimensionService(Document doc)
             else side = facing.CrossProduct(run.Dir).Normalize();
             var normal = run.Dir.CrossProduct(side).Normalize();
 
-            var stations = new List<(double T, Reference Ref)>();
+            var stations = new List<(double T, Reference Ref, string What)>();
             double min = run.Pipes.Min(p => Math.Min(T(End(p, 0)), T(End(p, 1)))), max = run.Pipes.Max(p => Math.Max(T(End(p, 0)), T(End(p, 1))));
             double reach = run.Radius * 6 + 0.25; // an elbow's centre lies beyond its pipes' ends
 
@@ -71,7 +73,8 @@ public sealed class DimensionService(Document doc)
                 if (fi.Location is not LocationPoint { Point: var p }) continue;
                 double t = T(p);
                 if (t < min - reach || t > max + reach || (run.Origin + run.Dir * t).DistanceTo(p) > run.Radius + OnAxis) continue;
-                if (CentrePlane(fi, run.Dir) is { } plane) { stations.Add((t, plane)); continue; }
+                var name = $"[{fi.Id.Value}] {fi.Symbol?.FamilyName}";
+                if (CentrePlane(fi, run.Dir) is { } plane) { stations.Add((t, plane, $"{name} centre plane")); continue; }
 
                 // No centre plane: the centreline of a pipe leaving this fitting square to the leg, in the dimension's plane.
                 var across = PipingElements.GetConnectedElements(fi).OfType<MEPCurve>()
@@ -79,21 +82,21 @@ public sealed class DimensionService(Document doc)
                                 && Math.Abs(l.Direction.DotProduct(normal)) < 0.01)
                     .Select(m => (Pipe: m, Line: Centerline(m))).FirstOrDefault(x => x.Line?.Reference is not null);
                 if (across.Line is { } line)
-                    stations.Add((T(line.Project(p)?.XYZPoint ?? p), line.Reference));
-                else noReference++;
+                    stations.Add((T(line.Project(p)?.XYZPoint ?? p), line.Reference, $"{name} centre, via pipe [{across.Pipe.Id.Value}]"));
+                else missing.Add(name);
             }
 
             // Pipe ends that leave the set (or end open): the end of the pipe's centreline.
             foreach (var pipe in run.Pipes)
             foreach (var c in Ends(pipe).Where(c => !c.AllRefs.Cast<Connector>().Any(r => r.Owner is { } o && o.Id != pipe.Id && ids.Contains(o.Id))))
             {
-                if (Centerline(pipe) is not { } line) { noReference++; continue; }
+                if (Centerline(pipe) is not { } line) { missing.Add($"[{pipe.Id.Value}] pipe end"); continue; }
                 int i = line.GetEndPoint(0).DistanceTo(c.Origin) <= line.GetEndPoint(1).DistanceTo(c.Origin) ? 0 : 1;
-                if (line.GetEndPointReference(i) is { } r) stations.Add((T(c.Origin), r));
-                else noReference++;
+                if (line.GetEndPointReference(i) is { } r) stations.Add((T(c.Origin), r, $"[{pipe.Id.Value}] pipe end"));
+                else missing.Add($"[{pipe.Id.Value}] pipe end");
             }
 
-            stations = stations.OrderBy(s => s.T).Aggregate(new List<(double T, Reference Ref)>(), (kept, s) =>
+            stations = stations.OrderBy(s => s.T).Aggregate(new List<(double T, Reference Ref, string What)>(), (kept, s) =>
             {
                 if (kept.Count == 0 || s.T - kept[^1].T > SameStation) kept.Add(s);
                 return kept;
@@ -105,26 +108,62 @@ public sealed class DimensionService(Document doc)
             if ((mid - centreOf[run.Pipes[0].Id]).DotProduct(side) < 0) side = side.Negate();
             var shift = side * (run.Radius + offset);
 
-            try
+            if (is3D) view.SketchPlane = SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(normal, run.Origin));
+            var at = Line.CreateBound(run.Origin + run.Dir * stations[0].T + shift, run.Origin + run.Dir * stations[^1].T + shift);
+            var (dim, why) = TryCreate(view, at, stations.Select(s => s.Ref), type);
+            if (dim is null)
             {
-                if (is3D) view.SketchPlane = SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(normal, run.Origin));
-                var refs = new ReferenceArray();
-                foreach (var s in stations) refs.Append(s.Ref);
-                var at = Line.CreateBound(run.Origin + run.Dir * stations[0].T + shift, run.Origin + run.Dir * stations[^1].T + shift);
-                if ((type is null ? doc.Create.NewDimension(view, at, refs) : doc.Create.NewDimension(view, at, refs, type)) is { } dim) dims.Add(dim);
-                else refused.Add($"[{run.Pipes[0].Id.Value}] Revit returned no dimension");
+                // Revit refuses the whole string if any one reference isn't one it can measure to: keep each
+                // reference that dimensions against at least one other, and try again with those.
+                var good = new bool[stations.Count];
+                for (int i = 0; i < stations.Count; i++)
+                for (int j = i + 1; j < stations.Count; j++)
+                    if (!(good[i] && good[j]) && Works(view, at, stations[i].Ref, stations[j].Ref, type)) good[i] = good[j] = true;
+                var kept = stations.Where((_, i) => good[i]).ToList();
+                if (kept.Count >= 2 && kept.Count < stations.Count)
+                {
+                    rejected.AddRange(stations.Where((_, i) => !good[i]).Select(s => s.What));
+                    at = Line.CreateBound(run.Origin + run.Dir * kept[0].T + shift, run.Origin + run.Dir * kept[^1].T + shift);
+                    (dim, why) = TryCreate(view, at, kept.Select(s => s.Ref), type);
+                }
+                else if (kept.Count < 2) why += $" (none of its {stations.Count} references could be dimensioned: {string.Join(", ", stations.Select(s => s.What))})";
             }
-            catch (Exception ex)
-            {
-                refused.Add($"[{run.Pipes[0].Id.Value}] {ex.Message}");
-            }
+            if (dim is not null) dims.Add(dim);
+            else refused.Add($"[{run.Pipes[0].Id.Value}] {why}");
         }
 
         if (edgeOn > 0) notes.Add($"{edgeOn} leg(s) run towards the viewer in this view, so they have no length to dimension here.");
-        if (noReference > 0) notes.Add($"{noReference} fitting(s) or pipe end(s) had no centre reference or centreline to dimension to.");
+        if (missing.Count > 0)
+            notes.Add($"{missing.Count} fitting(s) or pipe end(s) had no centre reference or centreline to dimension to: " + string.Join(", ", missing.Take(5)) + (missing.Count > 5 ? " …" : string.Empty));
+        if (rejected.Count > 0)
+            notes.Add($"Left {rejected.Count} reference(s) Revit wouldn't dimension to out of their leg: " + string.Join(", ", rejected.Take(8)) + (rejected.Count > 8 ? " …" : string.Empty));
         if (refused.Count > 0)
             notes.Add($"Revit refused {refused.Count} leg(s) (pipe id, reason): " + string.Join("; ", refused.Take(5)) + (refused.Count > 5 ? " …" : string.Empty));
         return new DimensionResult(dims, runs.Count, notes);
+    }
+
+    private (Dimension? Dim, string Why) TryCreate(View view, Line at, IEnumerable<Reference> refs, DimensionType? type)
+    {
+        var array = new ReferenceArray();
+        foreach (var r in refs) array.Append(r);
+        try
+        {
+            var dim = type is null ? doc.Create.NewDimension(view, at, array) : doc.Create.NewDimension(view, at, array, type);
+            return (dim, dim is null ? "Revit returned no dimension" : string.Empty);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message.Split('\n')[0].Trim());
+        }
+    }
+
+    /// <summary>Whether Revit will dimension between these two references; the trial dimension is rolled back.</summary>
+    private bool Works(View view, Line at, Reference a, Reference b, DimensionType? type)
+    {
+        using var trial = new SubTransaction(doc);
+        trial.Start();
+        try { return TryCreate(view, at, [a, b], type).Dim is not null; }
+        finally { trial.RollBack(); }
     }
 
     /// <summary>Straight pipes grouped by the centreline they run along.</summary>
