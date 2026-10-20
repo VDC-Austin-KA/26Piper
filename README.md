@@ -179,17 +179,18 @@ Color schemes save to and load from `.json` files. The window stays open while y
 7. One undo removes all the views.
 
 **Auto Dimension** (Visualize panel) dimensions the piping in the active view the way a spool iso does. It uses the selected piping if any is selected, otherwise all piping visible in the view. A dialog asks which linear dimension type to use. The choice is saved as your default (in `%AppData%\PipingSuite`), so it's preselected next time.
-1. **One chained dimension per straight leg.** It runs to the centre of every fitting and accessory on the leg (elbows, tees, olets, valves), and to pipe ends that leave the set. Each string reads centre to centre and adds up to the leg.
+1. **Every segment of every straight leg.** Each leg is measured to the centre of every fitting and accessory on it (elbows, tees, olets, valves), and to pipe ends that leave the set. Each segment, centre to centre, is its own dimension, so any one can be moved without the rest.
 2. **Centre references:**
    - A fitting is measured to its family's centre reference plane that is square to the leg (Center Left/Right, Front/Back or Elevation).
    - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre. Failing that, it goes to a short line in the invisible-lines style drawn through the centre, so no fitting or accessory on the leg is skipped.
    - Fittings and accessories bolted straight on in line (a valve on an elbow, a flange on a valve) are on the leg, as long as the leg's pipes reach them through connections.
    - **Small takeoffs** (1" and under, off a line more than twice their size, e.g. a 1/4" vent with a small valve off a 2" branch) aren't dimensioned along themselves. The line they come off is dimensioned to the takeoff's centre (its olet or tee), from the nearest fitting or accessory. The BOM covers the rest.
-   - Pipe ends use the pipe's centreline end.
+   - Pipe ends use the pipe's flat end face, or its centreline end in coarse views.
 3. **Placement:** each dimension sits outside its spool.
+   - **No overlapping text:** a segment too short for its text, or whose text would run into a neighbour's, steps out to a further row (2.5 text heights apart). The text width is worked out from the dimension type's text size.
    - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
    - **Plan or section:** each dimension lies in the view plane. Legs running towards the viewer have no length to show, so they're skipped.
-4. **References Revit won't use:** Revit refuses a whole string if one reference in it can't be dimensioned to (e.g. "The references are not geometric references"). The tool then keeps each reference that dimensions against at least one other and places the string with those. The report names each fitting or pipe end it left out.
+4. **References Revit won't use:** some references Revit won't dimension to (e.g. "The references are not geometric references"). The tool finds them by trying each against the others, and measures to a short invisible line in the same place instead. The report names each one.
 5. **Report:** the report says how many legs were dimensioned. For each leg Revit still refused, it gives the pipe id and Revit's reason. One undo removes everything.
 
 **Auto Tag** (Visualize panel) tags the piping in the active view once per unique value. It uses the selected piping if any is selected, otherwise all piping visible in the view.
