@@ -14,14 +14,18 @@ public sealed record DimensionResult(IReadOnlyList<Dimension> Dimensions, int Le
 /// accessory on it (elbows, tees, olets, valves…) and to pipe ends that leave the set, so each string reads centre
 /// to centre and adds up to the leg. A fitting is measured to its family's centre reference plane square to the
 /// leg; a family without one is measured to the centreline of the pipe leaving it at right angles, which runs
-/// through the same centre. Works in plans, sections and 3D views (a 3D view is locked first; each dimension lies
-/// in the plane of its leg that faces the viewer most). The caller holds the transaction.
+/// through the same centre; failing that, to a short invisible line drawn through the centre. Fittings and
+/// accessories bolted straight on in line (a valve on an elbow) are on the leg too. Small takeoffs (a 1/4" vent off
+/// a 2" line) aren't dimensioned along themselves: the line they come off is dimensioned to their centre.
+/// Works in plans, sections and 3D views (a 3D view is locked first; each dimension lies in the plane of its leg
+/// that faces the viewer most). The caller holds the transaction.
 /// </summary>
 public sealed class DimensionService(Document doc)
 {
     private const double OnAxis = 0.05;            // ft: a fitting centre this close to a leg's centreline sits on it
     private const double SameStation = 1.0 / 192;  // ft (1/16"): stations closer than this are one
     private const double DimOffsetInches = 0.35;   // on paper, beyond the pipe's outside
+    private const double SmallTakeoff = 1.0 / 12;  // ft: a line this size or smaller, under half its spool's main size, isn't dimensioned along itself
 
     private sealed record Run(XYZ Origin, XYZ Dir, double Radius, List<MEPCurve> Pipes);
 
@@ -40,7 +44,8 @@ public sealed class DimensionService(Document doc)
         var piping = elements.Where(PipingElements.IsPiping).DistinctBy(e => e.Id).ToList();
         var ids = piping.Select(e => e.Id).ToHashSet();
         var parts = piping.OfType<FamilyInstance>().ToList();
-        var centreOf = Centres(piping);
+        var (centreOf, mainRadius) = Centres(piping);
+        var partIds = parts.Select(p => p.Id).ToHashSet();
         var facing = view.ViewDirection.Negate(); // towards the model
         bool is3D = view is View3D;
         var geometry = new Options { ComputeReferences = true, IncludeNonVisibleObjects = true, View = view };
@@ -49,13 +54,18 @@ public sealed class DimensionService(Document doc)
         double offset = DimOffsetInches / 12 * view.Scale;
 
         var runs = Runs(piping.OfType<MEPCurve>());
-        int edgeOn = 0;
+        int edgeOn = 0, small = 0, helpers = 0;
+        var invisible = Category.GetCategory(doc, BuiltInCategory.OST_InvisibleLines)?.GetGraphicsStyle(GraphicsStyleType.Projection);
         var refused = new List<string>();
         var missing = new List<string>();  // fittings and pipe ends with nothing to measure to
         var rejected = new List<string>(); // references Revit wouldn't dimension to, left out of their leg
         foreach (var run in runs)
         {
             double T(XYZ p) => (p - run.Origin).DotProduct(run.Dir);
+            bool OnAxis(XYZ p) => (run.Origin + run.Dir * T(p)).DistanceTo(p) <= run.Radius + DimensionService.OnAxis;
+
+            // A small takeoff is dimensioned only where it leaves its line (that line's string runs to its centre).
+            if (run.Radius * 2 <= SmallTakeoff + 1e-6 && run.Radius * 2 < mainRadius[run.Pipes[0].Id]) { small++; continue; }
 
             // The dimension's plane: in a plan or section, the view's; in 3D, the one of the leg's sides that faces the viewer most.
             XYZ side;
@@ -67,12 +77,22 @@ public sealed class DimensionService(Document doc)
             var stations = new List<(double T, Reference Ref, string What)>();
             double min = run.Pipes.Min(p => Math.Min(T(End(p, 0)), T(End(p, 1)))), max = run.Pipes.Max(p => Math.Max(T(End(p, 0)), T(End(p, 1))));
             double reach = run.Radius * 6 + 0.25; // an elbow's centre lies beyond its pipes' ends
+            SketchPlane? sketch = null;
+            SketchPlane Sketch() => sketch ??= SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(normal, run.Origin));
+
+            // On the leg: fittings and accessories centred on its axis that its pipes reach through connections, one
+            // after another (a valve bolted to an elbow, an olet on the pipe), or that sit just past its pipes' ends.
+            var onLeg = new HashSet<ElementId>();
+            var queue = new Queue<Element>(run.Pipes);
+            while (queue.Count > 0)
+                foreach (var n in PipingElements.GetConnectedElements(queue.Dequeue()))
+                    if (partIds.Contains(n.Id) && n.Location is LocationPoint { Point: var np } && OnAxis(np) && onLeg.Add(n.Id)) queue.Enqueue(n);
 
             foreach (var fi in parts)
             {
                 if (fi.Location is not LocationPoint { Point: var p }) continue;
                 double t = T(p);
-                if (t < min - reach || t > max + reach || (run.Origin + run.Dir * t).DistanceTo(p) > run.Radius + OnAxis) continue;
+                if (!onLeg.Contains(fi.Id) && (t < min - reach || t > max + reach || !OnAxis(p))) continue;
                 var name = $"[{fi.Id.Value}] {fi.Symbol?.FamilyName}";
                 if (CentrePlane(fi, run.Dir) is { } plane) { stations.Add((t, plane, $"{name} centre plane")); continue; }
 
@@ -82,8 +102,25 @@ public sealed class DimensionService(Document doc)
                                 && Math.Abs(l.Direction.DotProduct(normal)) < 0.01)
                     .Select(m => (Pipe: m, Line: Centerline(m))).FirstOrDefault(x => x.Line?.Reference is not null);
                 if (across.Line is { } line)
+                {
                     stations.Add((T(line.Project(p)?.XYZPoint ?? p), line.Reference, $"{name} centre, via pipe [{across.Pipe.Id.Value}]"));
-                else missing.Add(name);
+                    continue;
+                }
+
+                // Nothing to measure to: a short invisible line through the centre, square to the leg, in the dimension's plane.
+                try
+                {
+                    var half = side * Math.Max(run.Radius, 0.05);
+                    var centre = run.Origin + run.Dir * t;
+                    var mark = doc.Create.NewModelCurve(Line.CreateBound(centre - half, centre + half), Sketch());
+                    if (invisible is not null) mark.LineStyle = invisible;
+                    stations.Add((t, mark.GeometryCurve.Reference, $"{name} centre, via an invisible line"));
+                    helpers++;
+                }
+                catch (Exception)
+                {
+                    missing.Add(name);
+                }
             }
 
             // Pipe ends that leave the set (or end open): the end of the pipe's centreline.
@@ -108,7 +145,7 @@ public sealed class DimensionService(Document doc)
             if ((mid - centreOf[run.Pipes[0].Id]).DotProduct(side) < 0) side = side.Negate();
             var shift = side * (run.Radius + offset);
 
-            if (is3D) view.SketchPlane = SketchPlane.Create(doc, Plane.CreateByNormalAndOrigin(normal, run.Origin));
+            if (is3D) view.SketchPlane = Sketch();
             var at = Line.CreateBound(run.Origin + run.Dir * stations[0].T + shift, run.Origin + run.Dir * stations[^1].T + shift);
             var (dim, why) = TryCreate(view, at, stations.Select(s => s.Ref), type);
             if (dim is null)
@@ -133,6 +170,8 @@ public sealed class DimensionService(Document doc)
         }
 
         if (edgeOn > 0) notes.Add($"{edgeOn} leg(s) run towards the viewer in this view, so they have no length to dimension here.");
+        if (small > 0) notes.Add($"{small} small takeoff leg(s) (1\" and under, off a line over twice their size) were dimensioned only to their centre on the line they come off.");
+        if (helpers > 0) notes.Add($"{helpers} fitting or accessory centre(s) without a centre reference plane square to their leg got an invisible line to measure to.");
         if (missing.Count > 0)
             notes.Add($"{missing.Count} fitting(s) or pipe end(s) had no centre reference or centreline to dimension to: " + string.Join(", ", missing.Take(5)) + (missing.Count > 5 ? " …" : string.Empty));
         if (rejected.Count > 0)
@@ -188,7 +227,8 @@ public sealed class DimensionService(Document doc)
     }
 
     /// <summary>Middle of each element's connected spool, so dimensions go to the outside of the spool they belong to.</summary>
-    private static Dictionary<ElementId, XYZ> Centres(IReadOnlyList<Element> piping)
+    /// <returns>Each element's spool middle, and the radius of the biggest pipe in its spool.</returns>
+    private static (Dictionary<ElementId, XYZ> Centres, Dictionary<ElementId, double> MainRadius) Centres(IReadOnlyList<Element> piping)
     {
         var byId = piping.ToDictionary(e => e.Id);
         var uf = new UnionFind(byId.Keys);
@@ -197,13 +237,15 @@ public sealed class DimensionService(Document doc)
             uf.Union(e.Id, n.Id);
 
         var centres = new Dictionary<ElementId, XYZ>();
+        var main = new Dictionary<ElementId, double>();
         foreach (var g in byId.Keys.GroupBy(uf.Find))
         {
             var boxes = g.Select(id => byId[id].get_BoundingBox(null)).OfType<BoundingBoxXYZ>().ToList();
             var c = boxes.Count == 0 ? XYZ.Zero : boxes.Aggregate(XYZ.Zero, (s, b) => s + (b.Min + b.Max) / 2) / boxes.Count;
-            foreach (var id in g) centres[id] = c;
+            var radius = g.Select(id => byId[id]).OfType<MEPCurve>().SelectMany(Ends).Select(e => e.Shape == ConnectorProfileType.Round ? e.Radius : 0).DefaultIfEmpty(0).Max();
+            foreach (var id in g) (centres[id], main[id]) = (c, radius);
         }
-        return centres;
+        return (centres, main);
     }
 
     /// <summary>A family's centre reference plane square to <paramref name="dir"/> (left/right, front/back or elevation).</summary>

@@ -182,7 +182,9 @@ Color schemes save to and load from `.json` files. The window stays open while y
 1. **One chained dimension per straight leg.** It runs to the centre of every fitting and accessory on the leg (elbows, tees, olets, valves), and to pipe ends that leave the set. Each string reads centre to centre and adds up to the leg.
 2. **Centre references:**
    - A fitting is measured to its family's centre reference plane that is square to the leg (Center Left/Right, Front/Back or Elevation).
-   - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre.
+   - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre. Failing that, it goes to a short line in the invisible-lines style drawn through the centre, so no fitting or accessory on the leg is skipped.
+   - Fittings and accessories bolted straight on in line (a valve on an elbow, a flange on a valve) are on the leg, as long as the leg's pipes reach them through connections.
+   - **Small takeoffs** (1" and under, off a line more than twice their size, e.g. a 1/4" vent with a small valve off a 2" branch) aren't dimensioned along themselves. The line they come off is dimensioned to the takeoff's centre (its olet or tee), from the nearest fitting or accessory. The BOM covers the rest.
    - Pipe ends use the pipe's centreline end.
 3. **Placement:** each dimension sits outside its spool.
    - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
