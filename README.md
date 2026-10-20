@@ -60,6 +60,20 @@ The rules are:
 - The definition goes into your active shared parameter file under group `PipingSuite`. If none is set, it uses `%AppData%\PipingSuite\SharedParameters.txt`, and your setting is restored afterwards.
 - Values are a snapshot: re-run to refresh them.
 
+**Parameter Grid** (Assemblies & Parameters panel) edits the **"Set"** parameter group (BC_SYSTEM, BC_PACKAGE, BC_LINE SEGMENT, BC_LINE NUMBER, BC_REV…) in a spreadsheet. Nothing reaches the model until **Apply**, which writes only the changed (yellow) cells, in one undo.
+1. **Scope:** by default only the elements visible in the active view are read, piping only, which keeps it fast and safe. Tick **Selection only** to work on the selection instead, or untick **Piping only** for every model element. **Reload** after changing either.
+2. **Columns:** ElementId, Category, Family : Type, System Type, **Run** (connected piping) and **Line** (a branch, or a header run between branches, split the way EZ-ISO Check splits them). Then one column per writable "Set" parameter. Grey cells belong to elements without that parameter.
+3. **Selecting and editing:** select cells as in Excel: drag, Shift-click, Ctrl-click, or click a row header for the whole row. Type in a cell to edit it, or use the tools on the selection:
+   - **Set** (Ctrl+Enter) puts the value box's text in every selected cell. **Delete** clears them.
+   - **Paste** (Ctrl+V) takes text copied from Excel: one value fills every selected cell, a block pastes from the top-left one. Ctrl+C copies cells out.
+   - **Fill down** (Ctrl+D) fills each column of the selection from its top cell. **Copy down** (the default) repeats it (`DETAIL A, DETAIL A…`). **Fill series** steps it (`DETAIL A, B, C…`, `01, 02, 03…`, keeping zero padding). Switching between them re-does the last fill, like Excel's AutoFill options.
+   - **Copy from** a parameter in any group (e.g. `System Abbreviation (Mechanical)`): each selected cell takes its own element's value.
+   - **Select same:** in the current column, selects every row sharing the selected rows' line (branch), connected piping, system type or value in a chosen column. Then Set, paste or fill.
+   - **Revert** puts the selected cells back to what Revit has. **Show in Revit** selects and zooms to the selected rows' elements.
+4. **Sort and filter:** click a header to sort, in natural order (`2` before `10`, `DETAIL A` before `DETAIL B`). The filter box keeps rows containing every word typed. **Changed only** and **Issues only** narrow it further.
+5. **Check:** flags values (red, with the usual value on hover) that disagree with the rest of their line, for line-number and segment columns, or of their connected piping, for the rest. It also flags BC_SYSTEM values that disagree with the rest of their system type. **Fix issues** sets every flagged cell to its usual value, as pending changes.
+6. **Export / Import:** saves the visible rows as `.xlsx` or `.csv`, named `PipingSuite Parameters - <project> - <view>`. Edit the parameter columns in Excel and keep the ElementId column. Import then reads the file back by its **ElementId** column and **parameter-name headers**, whatever the file is called. Changed values come in as yellow pending edits to review before Apply. Rows for elements not in the grid, and unknown columns, are reported and skipped. The `.xlsx` reader and writer are built in, so no Excel or extra library is needed.
+
 **Align & Connect** (Routing panel): pick the element to connect, then what it connects to.
 - **End to end:** the mover slides sideways onto the target's axis and its end stretches to meet. It is then joined directly, or with a union (equal pipes), a transition (different sizes) or an elbow (angled pipe-to-pipe).
 - **Into a main:** if the open end is nearer the body of a pipe than to any open end, the main is split at that point and a tee is inserted.
