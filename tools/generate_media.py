@@ -309,6 +309,17 @@ def icon_auto_tag(d):
         tag(d, x, y, 46, 22, color)
 
 
+def icon_param_grid(d):
+    x0, y0, cw, rh, cols, rows = 10, 16, 36, 20, 3, 5                      # spreadsheet: header row, edited cells yellow
+    d.rectangle([x0, y0, x0 + cw * cols, y0 + rh], fill=PIPE)
+    for r in range(1, rows):
+        for c in range(cols):
+            fill = (255, 226, 120) if c == 2 and r >= 2 else WHITE
+            d.rectangle([x0 + c * cw, y0 + r * rh, x0 + (c + 1) * cw, y0 + (r + 1) * rh], fill=fill, outline=INK, width=2)
+    d.rectangle([x0, y0, x0 + cw * cols, y0 + rh * rows], outline=INK, width=4)
+    arrow(d, (x0 + cw * 2.5, y0 + rh * 1.6), (x0 + cw * 2.5, y0 + rh * 4.6), 5, ORANGE)    # fill down
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -327,6 +338,7 @@ ICONS = {
     "auto_dim": icon_auto_dim,
     "iso_bom": icon_iso_bom,
     "auto_tag": icon_auto_tag,
+    "param_grid": icon_param_grid,
 }
 
 
@@ -807,6 +819,32 @@ def scene_auto_tag(t, d):
     caption(d, "Auto Tag: one tag per line number; identical branches share one" if t < 3.0 else "A DETAIL B branch adds just one more tag")
 
 
+def scene_param_grid(t, d):
+    f, fb = font(8 * SS), font(8 * SS, True)
+    heads = ["ElementId", "BC_SYSTEM", "BC_PACKAGE", "BC_LINE SEGMENT"]
+    widths = [70, 80, 80, 110]
+    x0, y0, rh = 30, 22, 22
+    rows = [["5635374", "TWCS", "PKG6", "DETAIL A"]] + [[str(5635380 + i * 6), "TWCS", "PKG6", ""] for i in range(5)]
+    series = t >= 2.6
+    k = int(min(5, max(0, (t - 0.9) * 4))) if t < 2.6 else int(min(5, max(0, (t - 2.6) * 4)))
+    for r, row in enumerate([heads] + rows):
+        x = x0
+        for c, w in enumerate(widths):
+            text = row[c] if r == 0 else row[c]
+            fill = PIPE if r == 0 else WHITE
+            if r >= 2 and c == 3 and r - 1 <= k:                          # filled cells turn yellow
+                fill = (255, 236, 150)
+                text = "DETAIL " + chr(ord("A") + r - 1) if series else "DETAIL A"
+            d.rectangle([s(x, y0 + r * rh), s(x + w, y0 + (r + 1) * rh)], fill=fill, outline=GHOST, width=SS)
+            d.text(s(x + 5, y0 + r * rh + rh / 2), text, font=fb if r == 0 else f, fill=WHITE if r == 0 else INK, anchor="lm")
+            x += w
+    sx = x0 + sum(widths[:3])                                                # selection outline down the segment column
+    d.rectangle([s(sx, y0 + rh), s(sx + widths[3], y0 + rh * (1 + 1 + k))], outline=GREEN, width=2 * SS)
+    tag(d, s(sx + 10, 0)[0], s(0, y0 + rh * 7 + 6)[1], 90 * SS, 18 * SS, ORANGE,
+        "Fill series" if series else "Copy down", font(8 * SS, True))
+    caption(d, "Parameter Grid: Ctrl+D copies down, or fills a series" if t < 4 else "Apply writes only the yellow cells, in one undo")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -824,6 +862,7 @@ SCENES = {
     "auto_dim": scene_auto_dim,
     "iso_bom": scene_iso_bom,
     "auto_tag": scene_auto_tag,
+    "param_grid": scene_param_grid,
 }
 
 

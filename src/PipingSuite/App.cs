@@ -34,6 +34,8 @@ public sealed class App : IExternalApplication
             "Paste copied parameter values onto the selected elements.");
         AddButton<CombineParametersCommand>(assemblies, "Combine\nParameters", "combine", "combine",
             "Create a shared parameter that joins two existing parameters, e.g. PKG + LINENUMBER = PKG9-1.");
+        AddButton<ParamGridCommand>(assemblies, "Parameter\nGrid", "param_grid", "param_grid",
+            "Edit the \"Set\" parameters (BC_SYSTEM, BC_PACKAGE, BC_LINE SEGMENT, BC_REV…) of everything in the active view in a spreadsheet: multi-select, set, paste, fill down (copy or series), copy from another parameter, select same run or system, check consistency, export/import .xlsx or .csv. Only Apply changes the model.");
 
         var routing = application.CreateRibbonPanel(TabName, "Routing");
         AddButton<AlignConnectCommand>(routing, "Align &\nConnect", "align", "align",

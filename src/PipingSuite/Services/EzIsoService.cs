@@ -208,6 +208,14 @@ public sealed class EzIsoService(Document doc)
         return new EzIsoScan(lines.Count, lines.Count(l => !fixing.Contains(l)), issues.OrderBy(i => i.Kind).ThenBy(i => i.Line, ColorSplasherService.NaturalComparer.Instance).ToList());
     }
 
+    /// <summary>Each element's line, numbered from 1: a branch from its header tee or olet to its far end, or a header run between branches.</summary>
+    public static Dictionary<ElementId, int> LineOf(IReadOnlyList<Element> elements)
+    {
+        var piping = elements.Where(e => e.IsValidObject && PipingElements.IsPiping(e)).DistinctBy(e => e.Id).ToList();
+        var values = piping.ToDictionary(e => e.Id, e => Params.Select(p => ParameterHelper.GetValueByName(e, p)).ToArray());
+        return Lines(piping, values).Lines.SelectMany((l, i) => l.Elements.Select(e => (e.Id, Line: i + 1))).ToDictionary(x => x.Id, x => x.Line);
+    }
+
     /// <summary>Applies the chosen fixes as one undo: values first (fills, outliers, then new numbers), then connections.</summary>
     public (int Done, List<string> Notes) Apply(IReadOnlyList<EzIsoIssue> issues)
     {

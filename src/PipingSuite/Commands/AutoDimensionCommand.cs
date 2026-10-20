@@ -67,7 +67,7 @@ public sealed class AutoDimensionCommand : IExternalCommand
 
             new TaskDialog("Auto Dimension")
             {
-                MainInstruction = $"Dimensioned {result.Dimensions.Count} of {result.Legs} straight leg(s).",
+                MainInstruction = $"Placed {result.Dimensions.Count} dimension(s) on {result.Dimensioned} of {result.Legs} straight leg(s).",
                 MainContent = $"{piping.Count} {scope} piping element(s)." + (result.Notes.Count > 0 ? " Expand for notes." : string.Empty),
                 ExpandedContent = string.Join(Environment.NewLine, result.Notes),
             }.Show();

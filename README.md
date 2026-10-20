@@ -60,6 +60,20 @@ The rules are:
 - The definition goes into your active shared parameter file under group `PipingSuite`. If none is set, it uses `%AppData%\PipingSuite\SharedParameters.txt`, and your setting is restored afterwards.
 - Values are a snapshot: re-run to refresh them.
 
+**Parameter Grid** (Assemblies & Parameters panel) edits the **"Set"** parameter group (BC_SYSTEM, BC_PACKAGE, BC_LINE SEGMENT, BC_LINE NUMBER, BC_REV…) in a spreadsheet. Nothing reaches the model until **Apply**, which writes only the changed (yellow) cells, in one undo.
+1. **Scope:** by default only the elements visible in the active view are read, piping only, which keeps it fast and safe. Tick **Selection only** to work on the selection instead, or untick **Piping only** for every model element. **Reload** after changing either.
+2. **Columns:** ElementId, Category, Family : Type, System Type, **Run** (connected piping) and **Line** (a branch, or a header run between branches, split the way EZ-ISO Check splits them). Then one column per writable "Set" parameter. Grey cells belong to elements without that parameter.
+3. **Selecting and editing:** select cells as in Excel: drag, Shift-click, Ctrl-click, or click a row header for the whole row. Type in a cell to edit it, or use the tools on the selection:
+   - **Set** (Ctrl+Enter) puts the value box's text in every selected cell. **Delete** clears them.
+   - **Paste** (Ctrl+V) takes text copied from Excel: one value fills every selected cell, a block pastes from the top-left one. Ctrl+C copies cells out.
+   - **Fill down** (Ctrl+D) fills each column of the selection from its top cell. **Copy down** (the default) repeats it (`DETAIL A, DETAIL A…`). **Fill series** steps it (`DETAIL A, B, C…`, `01, 02, 03…`, keeping zero padding). Switching between them re-does the last fill, like Excel's AutoFill options.
+   - **Copy from** a parameter in any group (e.g. `System Abbreviation (Mechanical)`): each selected cell takes its own element's value.
+   - **Select same:** in the current column, selects every row sharing the selected rows' line (branch), connected piping, system type or value in a chosen column. Then Set, paste or fill.
+   - **Revert** puts the selected cells back to what Revit has. **Show in Revit** selects and zooms to the selected rows' elements.
+4. **Sort and filter:** click a header to sort, in natural order (`2` before `10`, `DETAIL A` before `DETAIL B`). The filter box keeps rows containing every word typed. **Changed only** and **Issues only** narrow it further.
+5. **Check:** flags values (red, with the usual value on hover) that disagree with the rest of their line, for line-number and segment columns, or of their connected piping, for the rest. It also flags BC_SYSTEM values that disagree with the rest of their system type. **Fix issues** sets every flagged cell to its usual value, as pending changes.
+6. **Export / Import:** saves the visible rows as `.xlsx` or `.csv`, named `PipingSuite Parameters - <project> - <view>`. Edit the parameter columns in Excel and keep the ElementId column. Import then reads the file back by its **ElementId** column and **parameter-name headers**, whatever the file is called. Changed values come in as yellow pending edits to review before Apply. Rows for elements not in the grid, and unknown columns, are reported and skipped. The `.xlsx` reader and writer are built in, so no Excel or extra library is needed.
+
 **Align & Connect** (Routing panel): pick the element to connect, then what it connects to.
 - **End to end:** the mover slides sideways onto the target's axis and its end stretches to meet. It is then joined directly, or with a union (equal pipes), a transition (different sizes) or an elbow (angled pipe-to-pipe).
 - **Into a main:** if the open end is nearer the body of a pipe than to any open end, the main is split at that point and a tee is inserted.
@@ -179,15 +193,18 @@ Color schemes save to and load from `.json` files. The window stays open while y
 7. One undo removes all the views.
 
 **Auto Dimension** (Visualize panel) dimensions the piping in the active view the way a spool iso does. It uses the selected piping if any is selected, otherwise all piping visible in the view. A dialog asks which linear dimension type to use. The choice is saved as your default (in `%AppData%\PipingSuite`), so it's preselected next time.
-1. **One chained dimension per straight leg.** It runs to the centre of every fitting and accessory on the leg (elbows, tees, olets, valves), and to pipe ends that leave the set. Each string reads centre to centre and adds up to the leg.
+1. **Every segment of every straight leg.** Each leg is measured to the centre of every fitting and accessory on it (elbows, tees, olets, valves), and to pipe ends that leave the set. Each segment, centre to centre, is its own dimension, so any one can be moved without the rest.
 2. **Centre references:**
    - A fitting is measured to its family's centre reference plane that is square to the leg (Center Left/Right, Front/Back or Elevation).
-   - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre.
-   - Pipe ends use the pipe's centreline end.
+   - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre. Failing that, it goes to a short line in the invisible-lines style drawn through the centre, so no fitting or accessory on the leg is skipped.
+   - Fittings and accessories bolted straight on in line (a valve on an elbow, a flange on a valve) are on the leg, as long as the leg's pipes reach them through connections.
+   - **Small takeoffs** (1" and under, off a line more than twice their size, e.g. a 1/4" vent with a small valve off a 2" branch) aren't dimensioned along themselves. The line they come off is dimensioned to the takeoff's centre (its olet or tee), from the nearest fitting or accessory. The BOM covers the rest.
+   - Pipe ends use the pipe's flat end face, or its centreline end in coarse views.
 3. **Placement:** each dimension sits outside its spool.
+   - **No overlapping text:** a segment too short for its text, or whose text would run into a neighbour's, steps out to a further row (2.5 text heights apart). The text width is worked out from the dimension type's text size.
    - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
    - **Plan or section:** each dimension lies in the view plane. Legs running towards the viewer have no length to show, so they're skipped.
-4. **References Revit won't use:** Revit refuses a whole string if one reference in it can't be dimensioned to (e.g. "The references are not geometric references"). The tool then keeps each reference that dimensions against at least one other and places the string with those. The report names each fitting or pipe end it left out.
+4. **References Revit won't use:** some references Revit won't dimension to (e.g. "The references are not geometric references"). The tool finds them by trying each against the others, and measures to a short invisible line in the same place instead. The report names each one.
 5. **Report:** the report says how many legs were dimensioned. For each leg Revit still refused, it gives the pipe id and Revit's reason. One undo removes everything.
 
 **Auto Tag** (Visualize panel) tags the piping in the active view once per unique value. It uses the selected piping if any is selected, otherwise all piping visible in the view.
