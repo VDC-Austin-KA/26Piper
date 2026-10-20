@@ -296,6 +296,19 @@ def icon_iso_bom(d):
     d.line([(x0 + 18, y0), (x0 + 18, y1)], fill=INK, width=3)
 
 
+def icon_auto_tag(d):
+    K = 12
+    hdr = [(0, 0, 0), (8, 0, 0)]                                           # header with three identical branches
+    pts = lambda p: (14 + _iso(*p, 0, 0, K)[0], 60 + _iso(*p, 0, 0, K)[1])
+    pipe(d, pts(hdr[0]), pts((6.5, 0, 0)), 10, PIPE)
+    for x in (1, 3, 5):
+        pipe(d, pts((x, 0, 0)), pts((x, 0, 4)), 8, GREEN)
+    # one tag for the header, one for all the branches
+    for (x, y, color), (lx, ly) in zip(((78, 8, GREEN), (78, 98, PIPE)), (pts((5, 0, 3.5)), pts((6, 0, 0)))):
+        d.line([(lx, ly), (x - 6, y + 11), (x, y + 11)], fill=INK, width=3)
+        tag(d, x, y, 46, 22, color)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -313,6 +326,7 @@ ICONS = {
     "iso_views": icon_iso_views,
     "auto_dim": icon_auto_dim,
     "iso_bom": icon_iso_bom,
+    "auto_tag": icon_auto_tag,
 }
 
 
@@ -765,6 +779,34 @@ def scene_iso_bom(t, d):
     caption(d, "ISO BOM: table drawn in the view" if k == 0 else "Pick a size (or fit it) to suit the sheet")
 
 
+def scene_auto_tag(t, d):
+    f = font(8 * SS, True)
+    K = 13
+
+    def pt(x, y, z):
+        return s(*_iso(x, y, z, 50, 112, K))
+
+    pipe(d, pt(0, 0, 0), pt(10, 0, 0), 9 * SS, PIPE)                       # header TWCS-PKG6-01
+    branches = [(1.5, GREEN), (4, GREEN), (6.5, GREEN), (9, PURPLE)]      # three DETAIL A, then a DETAIL B
+    for i, (x, color) in enumerate(branches):
+        grow = phase(t, 0.2 + i * 0.25, 0.7 + i * 0.25) if i < 3 else phase(t, 3.0, 3.5)
+        if grow > 0:
+            pipe(d, pt(x, 0, 0), pt(x, 0, 5 * grow), 7 * SS, color)
+    rows = [("TWCS-PKG6-DETAIL A", pt(6.5, 0, 4), GREEN, 1.4), ("TWCS-PKG6-01", pt(8, 0, 0), PIPE, 1.8),
+            ("TWCS-PKG6-DETAIL B", pt(9, 0, 4), PURPLE, 3.8)]
+    for i, (text, anchor, color, start) in enumerate(rows):               # one tag per unique line number
+        p = phase(t, start, start + 0.4)
+        if p <= 0:
+            continue
+        y = s(0, 40 + [0, 2, 1][i] * 30)[1]
+        col = mix(BG, INK, p)
+        x0 = s(262, 0)[0]
+        d.line([anchor, (x0 - 8 * SS, y), (x0, y)], fill=col, width=SS)
+        d.rectangle([x0, y - 7 * SS, x0 + 4 * SS, y + 7 * SS], fill=mix(BG, color, p))
+        d.text((x0 + 7 * SS, y), text, font=f, fill=col, anchor="lm")
+    caption(d, "Auto Tag: one tag per line number; identical branches share one" if t < 3.0 else "A DETAIL B branch adds just one more tag")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -781,6 +823,7 @@ SCENES = {
     "iso_views": scene_iso_views,
     "auto_dim": scene_auto_dim,
     "iso_bom": scene_iso_bom,
+    "auto_tag": scene_auto_tag,
 }
 
 

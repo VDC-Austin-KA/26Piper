@@ -47,7 +47,7 @@ public sealed class App : IExternalApplication
         AddButton<ReplaceConfigurationCommand>(routing, "Replace\nConfig", "replace", "replace",
             "Swap every branch laid out like a picked one (same system) for a correctly built branch or assembly, reconnected to its header, with optional numbering.");
         AddButton<EzIsoCheckCommand>(routing, "EZ-ISO\nCheck", "ez_iso", "ez_iso",
-            "Check line numbers ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) for EZ-ISO's Auto Line Nos: correct lines are left alone; empty values, outliers, duplicate and unnumbered lines and touching-but-unconnected taps are listed with a fix.");
+            "Check line numbers ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) for EZ-ISO's Auto Line Nos: correct lines, identical branches sharing a number and DETAIL values are left alone; empty values, outliers, duplicate and unnumbered lines and touching-but-unconnected taps are listed with a fix.");
 
         var view = application.CreateRibbonPanel(TabName, "Visualize");
         AddButton<ColorSplasherCommand>(view, "Color\nSplasher", "color", "color",
@@ -60,6 +60,8 @@ public sealed class App : IExternalApplication
             "One locked isometric per DETAIL type (or per configuration) in the selection: rainbow-colored and tagged by line segment, cropped square for sheets.");
         AddButton<AutoDimensionCommand>(view, "Auto\nDimension", "auto_dim", "auto_dim",
             "Dimension the piping in the active view (or the selected piping) like a spool iso: one chained dimension per straight leg, centre to centre of its fittings and valves. Works in locked 3D views, plans and sections.");
+        AddButton<AutoTagCommand>(view, "Auto\nTag", "auto_tag", "auto_tag",
+            "Tag the active view once per unique line number ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) or other parameter value: a header and its identical branches get one tag each. Pick the tag type and parameter; tags stack in a column with leaders, and re-running replaces them.");
         AddButton<IsoBomCommand>(view, "ISO\nBOM", "iso_bom", "iso_bom",
             "Add a bill of materials table to the active ISO view (selected or visible piping): item, quantity (pipe length or count), size and description, drawn in the view so it goes onto the sheet with it. Pick a text size or fit it to the piping, and a side; run again to resize or move it.");
 

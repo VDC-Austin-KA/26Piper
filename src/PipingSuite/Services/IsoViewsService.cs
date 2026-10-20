@@ -109,10 +109,11 @@ public sealed class IsoViewsService(Document doc)
             : elements.Select(e => ParameterHelper.GetValueByName(e, parameter)).OfType<string>().Where(v => DetailValue.IsMatch(v))
                 .GroupBy(v => v.Trim(), StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()).FirstOrDefault()?.Key;
 
-    /// <summary>Pipe types with cut lengths to 1/16", plus fitting and accessory types: the same whichever way it faces.</summary>
-    private static string Signature(IEnumerable<Element> elements) => string.Join("|", elements
+    /// <summary>Pipe types with cut lengths (to 1/16" by default), plus fitting and accessory types: the same whichever way it faces.</summary>
+    /// <param name="perFoot">Length steps per foot: 192 for 1/16", 24 for 1/2".</param>
+    internal static string Signature(IEnumerable<Element> elements, int perFoot = 192) => string.Join("|", elements
         .Select(e => e is MEPCurve { Location: LocationCurve lc }
-            ? $"{e.GetTypeId().Value}:{Math.Round(lc.Curve.Length * 192)}"
+            ? $"{e.GetTypeId().Value}:{Math.Round(lc.Curve.Length * perFoot)}"
             : e.GetTypeId().Value.ToString())
         .OrderBy(s => s, StringComparer.Ordinal));
 
