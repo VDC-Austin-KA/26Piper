@@ -187,7 +187,8 @@ Color schemes save to and load from `.json` files. The window stays open while y
 3. **Placement:** each dimension sits outside its spool.
    - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
    - **Plan or section:** each dimension lies in the view plane. Legs running towards the viewer have no length to show, so they're skipped.
-4. **Report:** the report says how many legs were dimensioned. For each leg Revit refused, it gives the pipe id and Revit's reason. One undo removes everything.
+4. **References Revit won't use:** Revit refuses a whole string if one reference in it can't be dimensioned to (e.g. "The references are not geometric references"). The tool then keeps each reference that dimensions against at least one other and places the string with those. The report names each fitting or pipe end it left out.
+5. **Report:** the report says how many legs were dimensioned. For each leg Revit still refused, it gives the pipe id and Revit's reason. One undo removes everything.
 
 **Auto Tag** (Visualize panel) tags the piping in the active view once per unique value. It uses the selected piping if any is selected, otherwise all piping visible in the view.
 1. **Tag and parameter:** pick any loaded pipe tag (`ISO Tag : Pipe Size System Tag` is listed first) and what to group by. The default is the EZ-ISO line number `{BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}`; any text parameter on the pipes can be picked instead. The dialog previews how many tags it will place and for which values.
