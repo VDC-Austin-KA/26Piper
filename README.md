@@ -182,10 +182,7 @@ Color schemes save to and load from `.json` files. The window stays open while y
 1. **One chained dimension per straight leg.** It runs to the centre of every fitting and accessory on the leg (elbows, tees, olets, valves), and to pipe ends that leave the set. Each string reads centre to centre and adds up to the leg.
 2. **Centre references:**
    - A fitting is measured to its family's centre reference plane that is square to the leg (Center Left/Right, Front/Back or Elevation).
-   - If the family has none square to the leg (a 45° elbow on a rolled offset), the dimension goes to the centreline of a pipe leaving the fitting at right angles, which runs through the same centre. Failing that, it goes to a short line in the invisible-lines style drawn through the centre.
-   - Fittings joined straight to each other with no pipe between (a return bend, an elbow on a valve) make a leg of their own.
-   - **Flanged joints** are measured once, to where the flanges meet (between any gasket), not to each flange. A flange on a valve is left to the valve's centre. A lone flange facing equipment, or leaving the set, is measured at its face. Flanges are recognised by part type, or by "flange" or "gasket" in the family or type name.
-   - Unions and couplings aren't measured to.
+   - If the family has none, the dimension goes to the centreline of the pipe leaving it at right angles, which runs through the same centre.
    - Pipe ends use the pipe's centreline end.
 3. **Placement:** each dimension sits outside its spool.
    - **3D view:** the view is locked first, if needed. Each dimension lies in the plane of its leg that faces the viewer most.
