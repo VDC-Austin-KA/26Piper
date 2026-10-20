@@ -126,6 +126,18 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Legend:** swatches in the same colors, with the package names inside, stacked to the left of the boxes and top-aligned with them.
 - Everything is one undo. Revit then opens the new view and reports the box count.
 
+**Resize** (Routing panel) changes a branch of one-size piping to another size.
+1. **What it resizes:** the selected piping, plus the fittings and accessories sitting between selected pieces. With nothing selected, pick one element: the branch is everything connected to it in the same size, up to (not including) size changes and the tees, crosses and olets it comes off. The branch is selected in Revit so you can see it before choosing.
+2. **Size:** pick from the sizes the pipe's segment offers; the next size up is preselected.
+3. **How each piece is resized:**
+   - Pipes take the new diameter.
+   - Fittings, flanges and accessories are resized through their connectors, or through their pipe-size parameter. If the family can't take the size that way, it's swapped to **another type of the same family** in that size (types named for the size are tried first). Anything with no such size is left as it was and listed.
+   - **The tee or olet the branch comes off** gets a matching outlet. An olet is re-made in the new size, the way Insert Olet resizes one. A tee's branch outlet is resized only if the family allows a different outlet size; otherwise it's put back and listed, so a reducing fitting or transition can be added.
+   - Where a selection ends against a pipe that stays its old size, the report says a transition is needed there.
+4. **Lengths:** connections Revit drops are made again. Pipes are stretched or shortened onto the resized fittings, so larger elbows and valves fit.
+5. **Bottom of pipe** (ticked by default): the branch is raised or lowered by the change in outside radius, so its bottom of pipe stays put, when it can move freely. That means it either touches nothing else, or hangs from vertical riser(s), which stretch to suit. If it joins something on a level or sloped connection, centrelines are kept instead, and the report gives how far the bottom of pipe moved.
+6. **Report:** what was resized and how, type swaps, outlets, the lowest bottom of pipe before and after, and any connection that couldn't be made again (run **Connect Disconnects** on those). One undo reverts the whole resize.
+
 **Replace Configuration** (Routing panel) swaps wrongly built branches for a correct one, wherever they are:
 1. **Pick the wrong branches:** preselect or window-select one or more of them, on any header sections. Pick their pipes, fittings and valves, and their olets too if those should be replaced as well. Each branch's header is found automatically: it's the outside connection to the piping with the biggest connectors, or the pipe the olet sits on.
 2. **Pick the correct branch:** select its elements (with its olet, if it has one), or its assembly. It can be loose or already on a header.

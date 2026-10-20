@@ -320,6 +320,13 @@ def icon_param_grid(d):
     arrow(d, (x0 + cw * 2.5, y0 + rh * 1.6), (x0 + cw * 2.5, y0 + rh * 4.6), 5, ORANGE)    # fill down
 
 
+def icon_resize(d):
+    pipe(d, (14, 92), (62, 92), 10, GHOST)                                 # thin pipe becomes a thick one
+    pipe(d, (70, 92), (116, 92), 22, PIPE)
+    arrow(d, (40, 50), (88, 50), 8, ORANGE)
+    d.line([(10, 106), (120, 106)], fill=GREEN, width=5)                   # bottom of pipe held
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -339,6 +346,7 @@ ICONS = {
     "iso_bom": icon_iso_bom,
     "auto_tag": icon_auto_tag,
     "param_grid": icon_param_grid,
+    "resize": icon_resize,
 }
 
 
@@ -845,6 +853,25 @@ def scene_param_grid(t, d):
     caption(d, "Parameter Grid: Ctrl+D copies down, or fills a series" if t < 4 else "Apply writes only the yellow cells, in one undo")
 
 
+def scene_resize(t, d):
+    g = ease(phase(t, 1.2, 2.6))                                         # 0 → 1: 2" grows to 3"
+    w = int(8 + 6 * g)
+    bop = 150                                                             # bottom of pipe stays on this line
+    y = bop - w / 2
+    pipe(d, s(20, 205), s(380, 205), 18 * SS, GHOST)                       # header, left alone
+    pipe(d, s(90, 205), s(90, y), w * SS, PIPE)                            # riser stretches as the branch rises
+    pipe(d, s(90, y), s(350, y), w * SS, PIPE)
+    vx = 230                                                              # valve resized with it
+    r = 7 + 4 * g
+    d.polygon([s(vx - r, y - r), s(vx - r, y + r), s(vx + r, y - r), s(vx + r, y + r)], fill=INK)
+    d.ellipse([s(90 - w * 0.9, y - w * 0.9), s(90 + w * 0.9, y + w * 0.9)], fill=PIPE)   # elbow
+    for x in range(20, 380, 12):                                           # bottom of pipe line
+        d.line([s(x, bop), s(x + 6, bop)], fill=GREEN, width=SS)
+    d.text(s(360, bop + 8), "BOP held", font=font(8 * SS, True), fill=GREEN, anchor="rm")
+    d.text(s(300, y - w / 2 - 10), "3\"" if g > 0.5 else "2\"", font=font(10 * SS, True), fill=INK, anchor="mm")
+    caption(d, "Resize: pipes, elbow and valve to 3\"; bottom of pipe kept" if t > 2.6 else "Resize: pick the branch, choose the new size")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -863,6 +890,7 @@ SCENES = {
     "iso_bom": scene_iso_bom,
     "auto_tag": scene_auto_tag,
     "param_grid": scene_param_grid,
+    "resize": scene_resize,
 }
 
 

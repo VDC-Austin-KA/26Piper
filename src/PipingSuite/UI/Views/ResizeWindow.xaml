@@ -1,0 +1,22 @@
+<Window x:Class="PipingSuite.UI.Views.ResizeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Resize" Width="400" SizeToContent="Height"
+        ShowInTaskbar="False" ResizeMode="NoResize">
+    <StackPanel Margin="12">
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,10" />
+
+        <TextBlock Text="New size" />
+        <ComboBox ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" Margin="0,2,0,8" />
+
+        <CheckBox Content="Keep the bottom of pipe elevation where the branch can move" IsChecked="{Binding KeepBottom}" Margin="0,2,0,8" />
+
+        <TextBlock TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,12"
+                   Text="Pipes take the new size; fittings, flanges and valves are resized, or swapped to a type of the same family in that size. The tee or olet the branch comes off gets a matching outlet. Pipes stretch to the larger fittings. The bottom of pipe is kept when the branch hangs from a riser or touches nothing else; otherwise centrelines stay and the report says how far the bottom moved. One undo reverts it." />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Resize" Width="80" IsDefault="True" Command="{Binding AcceptCommand}" />
+            <Button Content="Cancel" Width="80" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -46,6 +46,8 @@ public sealed class App : IExternalApplication
             "Copy an olet's placement (distance, rotation, size, type) onto other pipes in one go. Extends pipes that are too short.");
         AddButton<ConnectDisconnectsCommand>(routing, "Connect\nDisconnects", "heal", "heal",
             "Find every open end in a piping system that touches something it isn't connected to, zoom to each, and connect them: direct, elbow, transition, takeoff or re-attached olet.");
+        AddButton<ResizeCommand>(routing, "Resize", "resize", "resize",
+            "Resize the selected piping, or the one-size branch through a picked element: pipes, fittings, flanges and valves (or another type of the same family), plus the outlet of the tee or olet it comes off. Keeps the bottom of pipe where it can and reports any change.");
         AddButton<ReplaceConfigurationCommand>(routing, "Replace\nConfig", "replace", "replace",
             "Swap every branch laid out like a picked one (same system) for a correctly built branch or assembly, reconnected to its header, with optional numbering.");
         AddButton<EzIsoCheckCommand>(routing, "EZ-ISO\nCheck", "ez_iso", "ez_iso",
