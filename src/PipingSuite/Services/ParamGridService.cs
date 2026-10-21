@@ -6,10 +6,8 @@ using PipingSuite.Core;
 
 namespace PipingSuite.Services;
 
-/// <param name="Run">Connected piping: elements with the same run touch through connections ("" for non-piping).</param>
-/// <param name="Line">Its line within the run, as EZ-ISO Check splits them: one branch, or one header run between branches.</param>
 /// <param name="Values">One per editable column; null where the element doesn't have that parameter.</param>
-public sealed record GridRow(long Id, string Category, string FamilyType, string SystemType, string Run, string Line, string?[] Values);
+public sealed record GridRow(long Id, string Category, string FamilyType, string SystemType, string?[] Values);
 
 /// <param name="Columns">The "Set" group's writable instance parameters found on the elements.</param>
 public sealed record GridData(IReadOnlyList<string> Columns, IReadOnlyList<GridRow> Rows);
@@ -20,6 +18,7 @@ public sealed record CellWrite(long Id, string Parameter, string Value);
 /// Parameter Grid: reads the "Set" parameter group (BC_SYSTEM, BC_PACKAGE, BC_LINE SEGMENT, BC_REV…) of the elements
 /// in the active view or selection into rows for a spreadsheet-style editor, and writes only the changed cells back,
 /// in one transaction. Values are text as Revit shows them; numbers and lengths are parsed in project units.
+/// Loading reads each cell with one direct lookup; connectivity (runs and lines) is worked out only when asked for.
 /// </summary>
 public sealed class ParamGridService(Document doc)
 {
@@ -33,20 +32,47 @@ public sealed class ParamGridService(Document doc)
     /// <summary>Elements visible in the view (or the given selection), piping only or every model element.</summary>
     public List<Element> Scope(View view, ICollection<ElementId> selection, bool selectionOnly, bool pipingOnly)
     {
-        IEnumerable<Element> found = selectionOnly
-            ? selection.Select(doc.GetElement).OfType<Element>()
-            : new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElements();
-        return found.Where(e => e.Category is { CategoryType: CategoryType.Model } && (!pipingOnly || Piping.PassesFilter(e)))
-            .DistinctBy(e => e.Id).ToList();
+        if (selectionOnly)
+            return selection.Select(doc.GetElement).OfType<Element>()
+                .Where(e => e.Category is { CategoryType: CategoryType.Model } && (!pipingOnly || Piping.PassesFilter(e))).DistinctBy(e => e.Id).ToList();
+        var collector = new FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType();
+        if (pipingOnly) collector = collector.WherePasses(Piping); // filtered inside Revit, not element by element here
+        return collector.Where(e => e.Category is { CategoryType: CategoryType.Model }).ToList();
     }
 
     public GridData Load(IReadOnlyList<Element> elements)
     {
-        var columns = elements.SelectMany(e => e.Parameters.Cast<Parameter>()).Where(Editable)
-            .Select(p => p.Definition.Name).Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, ColorSplasherService.NaturalComparer.Instance).ToList();
+        // Columns from one element per category and type: parameters are bound per category (family ones per type),
+        // so the rest of each group has the same ones.
+        var found = new Dictionary<string, Definition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in elements.DistinctBy(e => (e.Category?.Id.Value, e.GetTypeId().Value)))
+        foreach (Parameter p in e.Parameters)
+            if (Editable(p)) found.TryAdd(p.Definition.Name, p.Definition);
+        var columns = found.Keys.OrderBy(n => n, ColorSplasherService.NaturalComparer.Instance).ToList();
+        var definitions = columns.Select(c => found[c]).ToArray();
 
-        var piping = elements.Where(PipingElements.IsPiping).ToDictionary(e => e.Id);
+        var types = new Dictionary<long, string>();
+        string TypeName(Element e)
+        {
+            var id = e.GetTypeId();
+            if (types.TryGetValue(id.Value, out var name)) return name;
+            return types[id.Value] = doc.GetElement(id) is ElementType t ? $"{t.FamilyName} : {t.Name}" : e.Name;
+        }
+
+        var rows = elements.Select(e => new GridRow(e.Id.Value, e.Category?.Name ?? string.Empty, TypeName(e),
+                e.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)?.AsValueString() ?? string.Empty,
+                columns.Select((c, i) => Cell(e, definitions[i], c) is { } p ? ParameterHelper.GetDisplayValue(p) : null).ToArray()))
+            .ToList();
+        return new GridData(columns, rows);
+    }
+
+    /// <summary>
+    /// Each piping element's connected run ("R3") and line ("L12": a branch, or a header run between branches, as EZ-ISO
+    /// Check splits them). Only worked out when a feature needs it, since it walks every connection.
+    /// </summary>
+    public Dictionary<long, (string Run, string Line)> Topology(IReadOnlyList<Element> elements)
+    {
+        var piping = elements.Where(e => e.IsValidObject && PipingElements.IsPiping(e)).ToDictionary(e => e.Id);
         var uf = new UnionFind(piping.Keys);
         foreach (var e in piping.Values)
         foreach (var n in PipingElements.GetConnectedElements(e).Where(n => piping.ContainsKey(n.Id)))
@@ -54,19 +80,14 @@ public sealed class ParamGridService(Document doc)
         var runs = piping.Keys.GroupBy(uf.Find).OrderBy(g => g.Min(id => id.Value)).Select((g, i) => (g, i))
             .SelectMany(x => x.g.Select(id => (id, Name: $"R{x.i + 1}"))).ToDictionary(x => x.id, x => x.Name);
         var lines = EzIsoService.LineOf([.. piping.Values]);
-
-        var rows = elements.Select(e =>
-        {
-            var type = doc.GetElement(e.GetTypeId()) as ElementType;
-            return new GridRow(e.Id.Value, e.Category?.Name ?? string.Empty,
-                type is null ? e.Name : $"{type.FamilyName} : {type.Name}",
-                e.get_Parameter(BuiltInParameter.RBS_PIPING_SYSTEM_TYPE_PARAM)?.AsValueString() ?? string.Empty,
-                runs.GetValueOrDefault(e.Id, string.Empty),
-                lines.TryGetValue(e.Id, out var line) ? $"L{line}" : string.Empty,
-                columns.Select(c => Find(e, c) is { } p ? ParameterHelper.GetDisplayValue(p) : null).ToArray());
-        }).ToList();
-        return new GridData(columns, rows);
+        return piping.Keys.ToDictionary(id => id.Value, id => (runs[id], lines.TryGetValue(id, out var l) ? $"L{l}" : string.Empty));
     }
+
+    /// <summary>The column's parameter on an element: by its definition (one lookup), else by name for a same-named family parameter.</summary>
+    private static Parameter? Cell(Element e, Definition definition, string name) =>
+        e.get_Parameter(definition) is { } p && Editable(p) ? p
+        : e.LookupParameter(name) is { } q && Editable(q) ? q
+        : null;
 
     /// <summary>Every parameter on the elements (instance and type), as "Name (Group)", to copy values from.</summary>
     public static List<string> SourceParameters(Document doc, IEnumerable<Element> elements) =>
@@ -121,7 +142,8 @@ public sealed class ParamGridService(Document doc)
     }
 
     private static Parameter? Find(Element e, string name) =>
-        e.Parameters.Cast<Parameter>().FirstOrDefault(p => p.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && Editable(p));
+        e.LookupParameter(name) is { } p && Editable(p) ? p
+        : e.Parameters.Cast<Parameter>().FirstOrDefault(p => p.Definition.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && Editable(p));
 
     /// <returns>Null when written, else why not.</returns>
     private string? Set(Parameter p, string value)

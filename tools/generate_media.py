@@ -327,6 +327,12 @@ def icon_resize(d):
     d.line([(10, 106), (120, 106)], fill=GREEN, width=5)                   # bottom of pipe held
 
 
+def icon_change_system(d):
+    pipe(d, (12, 40), (116, 40), 14, PIPE)                                 # supply above
+    pipe(d, (12, 100), (116, 100), 14, ORANGE)                             # becomes return below
+    arrow(d, (64, 54), (64, 86), 6, INK)
+
+
 ICONS = {
     "assemblies": icon_assemblies,
     "copy": icon_copy,
@@ -347,6 +353,7 @@ ICONS = {
     "auto_tag": icon_auto_tag,
     "param_grid": icon_param_grid,
     "resize": icon_resize,
+    "change_system": icon_change_system,
 }
 
 
@@ -872,6 +879,19 @@ def scene_resize(t, d):
     caption(d, "Resize: pipes, elbow and valve to 3\"; bottom of pipe kept" if t > 2.6 else "Resize: pick the branch, choose the new size")
 
 
+def scene_change_system(t, d):
+    g = ease(phase(t, 1.4, 2.4))
+    color = mix(PIPE, ORANGE, g)
+    pipe(d, s(30, 120), s(150, 120), 12 * SS, color)
+    pipe(d, s(150, 120), s(150, 60), 12 * SS, color)
+    pipe(d, s(150, 60), s(360, 60), 12 * SS, color)
+    d.ellipse([s(143, 113), s(157, 127)], fill=color)
+    d.ellipse([s(143, 53), s(157, 67)], fill=color)
+    label = "Condensate Water Return" if g > 0.5 else "Condensate Water Supply"
+    tag(d, s(190, 0)[0], s(0, 90)[1], 170 * SS, 22 * SS, color, label, font(8 * SS, True))
+    caption(d, "Change System: move piping to another system")
+
+
 SCENES = {
     "assemblies": scene_assemblies,
     "copy_paste": scene_copy_paste,
@@ -891,6 +911,7 @@ SCENES = {
     "auto_tag": scene_auto_tag,
     "param_grid": scene_param_grid,
     "resize": scene_resize,
+    "change_system": scene_change_system,
 }
 
 

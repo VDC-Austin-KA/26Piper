@@ -63,6 +63,7 @@ The rules are:
 **Parameter Grid** (Assemblies & Parameters panel) edits the **"Set"** parameter group (BC_SYSTEM, BC_PACKAGE, BC_LINE SEGMENT, BC_LINE NUMBER, BC_REV…) in a spreadsheet. Nothing reaches the model until **Apply**, which writes only the changed (yellow) cells, in one undo.
 1. **Scope:** by default only the elements visible in the active view are read, piping only, which keeps it fast and safe. Tick **Selection only** to work on the selection instead, or untick **Piping only** for every model element. **Reload** after changing either.
 2. **Columns:** ElementId, Category, Family : Type, System Type, **Run** (connected piping) and **Line** (a branch, or a header run between branches, split the way EZ-ISO Check splits them). Then one column per writable "Set" parameter. Grey cells belong to elements without that parameter.
+   - **Fast loading:** each cell is read with one direct lookup, and the grid is filled in one go. Run and Line need every connection walked, so they're blank until something needs them: Select same by line or run, Check, sorting by those columns, or Export. The Copy from list is read the first time it's opened.
 3. **Selecting and editing:** select cells as in Excel: drag, Shift-click, Ctrl-click, or click a row header for the whole row. Type in a cell to edit it, or use the tools on the selection:
    - **Set** (Ctrl+Enter) puts the value box's text in every selected cell. **Delete** clears them.
    - **Paste** (Ctrl+V) takes text copied from Excel: one value fills every selected cell, a block pastes from the top-left one. Ctrl+C copies cells out.
@@ -125,6 +126,12 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Translucency:** boxes get a surface transparency override (default 50%, remembered for the session), so the piping reads through them.
 - **Legend:** swatches in the same colors, with the package names inside, stacked to the left of the boxes and top-aligned with them.
 - Everything is one undo. Revit then opens the new view and reports the box count.
+
+**Change System** (Routing panel) moves piping to another piping system type, e.g. Condensate Water Supply to Condensate Water Return.
+1. **Scope:** the selected piping, or pick it when nothing is selected. Tick **Include connected piping on the same system** to move the whole run: everything joined to the selection on one of its current system types.
+2. **System type:** pick from the project's piping system types, listed with their classification. A type whose name differs only in its last word (Supply → Return) is preselected. The dialog shows how many elements will change and which systems they're on now.
+3. **Change:** pipes take the new system type; fittings and valves follow the pipes they join. Revit warnings are dismissed. Errors, such as an equipment connector whose classification doesn't match, take Revit's default fix and are reported.
+4. **Report:** how many pipes moved, any fitting or valve that didn't follow (select the pipes on both sides of it), and where the change stops against piping still on another system. One undo reverts it.
 
 **Resize** (Routing panel) changes a branch of one-size piping to another size.
 1. **What it resizes:** the selected piping, plus the fittings and accessories sitting between selected pieces. With nothing selected, pick one element: the branch is everything connected to it in the same size, up to (not including) size changes and the tees, crosses and olets it comes off. The branch is selected in Revit so you can see it before choosing.

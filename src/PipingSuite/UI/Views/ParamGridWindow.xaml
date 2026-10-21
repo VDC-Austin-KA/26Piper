@@ -23,7 +23,7 @@
             <ComboBox ItemsSource="{Binding FillModes}" SelectedValuePath="Value" SelectedValue="{Binding FillMode}" Width="100" Margin="4,0,14,0"
                       ToolTip="Copy down repeats the top value; Fill series steps it (DETAIL A, B, C… / 01, 02, 03…). Changing it re-does the last fill." />
             <TextBlock Text="Copy from" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding Source}" Width="220" IsEditable="True" IsTextSearchEnabled="True"
+            <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding Source}" Width="220" IsEditable="True" IsTextSearchEnabled="True" DropDownOpened="OnSourcesOpen"
                       ToolTip="Any parameter on these elements, e.g. System Abbreviation (Mechanical)" />
             <Button Content="Copy" Padding="8,1" Margin="4,0,14,0" Click="OnCopyFrom" ToolTip="Each selected cell takes its element's value of that parameter" />
             <TextBlock Text="Select same" VerticalAlignment="Center" Margin="0,0,4,0" />

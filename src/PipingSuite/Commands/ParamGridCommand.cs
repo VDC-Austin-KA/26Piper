@@ -51,6 +51,8 @@ public sealed class ParamGridCommand : IExternalCommand
             return _service.Load(_scope);
         }
 
+        public IReadOnlyDictionary<long, (string Run, string Line)> Topology() => _service.Topology(_scope);
+
         public IReadOnlyList<string> SourceParameters() => ParamGridService.SourceParameters(uiDoc.Document, _scope.Where(e => e.IsValidObject));
 
         public IReadOnlyDictionary<long, string?> SourceValues(string source, IReadOnlyCollection<long> ids) => _service.SourceValues(source, ids);
