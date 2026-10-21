@@ -353,8 +353,9 @@ public sealed class ReplaceConfigurationService(Document doc)
     /// How to lay the correct branch onto <paramref name="target"/>'s header connection: its header end is
     /// what its olet feeds (or each end of the right size, one on a header first) and the turn is the upright
     /// one where its legs run the same way as the target's. Null with the reason when its route doesn't fit.
+    /// Also returns the correct branch's own legs (as built, before they're stretched to the target's).
     /// </summary>
-    public (Transform? Pose, string? Why) Fit(Source good, Branch target)
+    public (Transform? Pose, string? Why, IReadOnlyList<Leg>? Legs) Fit(Source good, Branch target)
     {
         var olet = RootOlet(good.Elements);
         var body = good.Elements.Where(e => e.Id != olet?.Id).ToList();
@@ -366,7 +367,7 @@ public sealed class ReplaceConfigurationService(Document doc)
                 .Where(c => !c.IsConnected || Refs(c).Any(r => !ids.Contains(r.Owner.Id)))
                 .OrderByDescending(c => c.IsConnected) // an end already on a header first
                 .ToList();
-        if (roots.Count == 0) return (null, "the correct branch has no end the size of this branch's header connection");
+        if (roots.Count == 0) return (null, "the correct branch has no end the size of this branch's header connection", null);
 
         var targetFrame = Frame(target.Origin, target.Out, 0);
         string why = "the correct branch's route is different";
@@ -375,10 +376,88 @@ public sealed class ReplaceConfigurationService(Document doc)
             var (chain, _) = Walk(root, o => !ids.Contains(o.Id));
             var route = new Route(chain, Legs(chain), null);
             var miss = BestTurn(target.Route, targetFrame, route, root.Origin, root.CoordinateSystem.BasisZ.Negate(), out var f);
-            if (miss is null) return (targetFrame.Multiply(f.Inverse), null);
+            if (miss is null) return (targetFrame.Multiply(f.Inverse), null, route.Legs);
             why = $"the correct branch's legs {miss} from this one's";
         }
-        return (null, why);
+        return (null, why, null);
+    }
+
+    // ---------------------------------------------------------------- review
+
+    /// <summary>
+    /// A new isometric showing only the branches to replace (orange), those that can't be (grey) and the correct
+    /// branch (green), boxed around them, for the review window's preview.
+    /// </summary>
+    public View3D CreateReviewView(IEnumerable<Branch> replace, IEnumerable<Branch> skip, Source good)
+    {
+        var groups = new (List<ElementId> Ids, Color Color)[]
+        {
+            (replace.SelectMany(b => b.Ids).ToList(), new Color(232, 135, 30)),
+            (skip.SelectMany(b => b.Ids).ToList(), new Color(160, 160, 160)),
+            (good.Elements.Select(e => e.Id).ToList(), new Color(63, 155, 90)),
+        };
+        var all = groups.SelectMany(g => g.Ids).Distinct().Where(id => doc.GetElement(id) is not null).ToList();
+
+        View3D view;
+        using (var t = new Transaction(doc, "Replace Configuration - review view"))
+        {
+            t.Start();
+            var type = new FilteredElementCollector(doc).OfClass(typeof(ViewFamilyType)).Cast<ViewFamilyType>()
+                .First(v => v.ViewFamily == ViewFamily.ThreeDimensional);
+            view = View3D.CreateIsometric(doc, type.Id);
+            var taken = new FilteredElementCollector(doc).OfClass(typeof(View)).Cast<View>().Select(v => v.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var name = "REPLACE CONFIG - REVIEW";
+            for (int i = 2; taken.Contains(name); i++) name = $"REPLACE CONFIG - REVIEW ({i})";
+            view.Name = name;
+            if (view.ViewTemplateId == ElementId.InvalidElementId)
+            {
+                view.DetailLevel = ViewDetailLevel.Fine;
+                view.DisplayStyle = DisplayStyle.ShadingWithEdges;
+            }
+            var boxes = all.Select(id => doc.GetElement(id).get_BoundingBox(null)).OfType<BoundingBoxXYZ>().ToList();
+            if (boxes.Count > 0)
+            {
+                var pad = new XYZ(1, 1, 1);
+                view.SetSectionBox(new BoundingBoxXYZ
+                {
+                    Min = new XYZ(boxes.Min(b => b.Min.X), boxes.Min(b => b.Min.Y), boxes.Min(b => b.Min.Z)) - pad,
+                    Max = new XYZ(boxes.Max(b => b.Max.X), boxes.Max(b => b.Max.Y), boxes.Max(b => b.Max.Z)) + pad,
+                });
+                view.SetCategoryHidden(new ElementId(BuiltInCategory.OST_SectionBox), true);
+            }
+            view.IsolateElementsTemporary(all);
+            view.ConvertTemporaryHideIsolateToPermanent();
+            t.Commit();
+        }
+        new ColorSplasherService(doc, view).Apply(groups.Where(g => g.Ids.Count > 0).Select(g => ((IReadOnlyList<ElementId>)g.Ids, g.Color)), colorLines: false);
+        return view;
+    }
+
+    /// <summary>Names the grid intersection nearest a point in plan, e.g. "C-4 (2'-3")"; null when the model has no two crossing grids.</summary>
+    public Func<XYZ, string?> GridLocator()
+    {
+        var grids = new FilteredElementCollector(doc).OfClass(typeof(Grid)).Cast<Grid>()
+            .Where(g => g.Curve is Line).Select(g => (g.Name, Line: (Line)g.Curve)).ToList();
+        var points = new List<(string Name, XYZ At)>();
+        for (int i = 0; i < grids.Count; i++)
+        for (int j = i + 1; j < grids.Count; j++)
+        {
+            XYZ p0 = grids[i].Line.GetEndPoint(0), d0 = grids[i].Line.Direction, p1 = grids[j].Line.GetEndPoint(0), d1 = grids[j].Line.Direction;
+            double cross = d0.X * d1.Y - d0.Y * d1.X;
+            if (Math.Abs(cross) < 1e-6) continue; // parallel
+            double u = ((p1.X - p0.X) * d1.Y - (p1.Y - p0.Y) * d1.X) / cross;
+            var (a, b) = (grids[i].Name, grids[j].Name);
+            var label = !a.Any(char.IsLetter) && b.Any(char.IsLetter) ? $"{b}-{a}" : $"{a}-{b}"; // letters first, as in "C-4"
+            points.Add((label, new XYZ(p0.X + d0.X * u, p0.Y + d0.Y * u, 0)));
+        }
+        var units = doc.GetUnits();
+        return p =>
+        {
+            if (points.Count == 0) return null;
+            var flat = new XYZ(p.X, p.Y, 0);
+            var near = points.MinBy(x => x.At.DistanceTo(flat));
+            return $"{near.Name} ({UnitFormatUtils.Format(units, SpecTypeId.Length, near.At.DistanceTo(flat), false)})";
+        };
     }
 
     // ---------------------------------------------------------------- replacing
@@ -422,7 +501,7 @@ public sealed class ReplaceConfigurationService(Document doc)
                 newIds.AddRange(placed.Select(e => e.Id));
                 replaced++;
             }
-            catch (Exception ex) when (ex is Autodesk.Revit.Exceptions.ApplicationException or InvalidOperationException)
+            catch (Exception ex) // whatever went wrong, this placement alone is undone and the rest carry on
             {
                 if (t.HasStarted() && !t.HasEnded()) t.RollBack();
                 warnings.Add($"{label}: {ex.Message} The old branch was kept.");
@@ -653,8 +732,8 @@ public sealed class ReplaceConfigurationService(Document doc)
         return (axis.Normalize(), Math.PI);
     }
 
-    /// <summary>Targets ordered along the axis their roots spread out on most.</summary>
-    private static List<Target> AlongHeader(IReadOnlyList<Target> targets)
+    /// <summary>Targets ordered along the axis their roots spread out on most: the placement and numbering order.</summary>
+    public static List<Target> AlongHeader(IReadOnlyList<Target> targets)
     {
         if (targets.Count < 2) return targets.ToList();
         double Spread(Func<XYZ, double> f) => targets.Max(t => f(t.Old.Origin)) - targets.Min(t => f(t.Old.Origin));

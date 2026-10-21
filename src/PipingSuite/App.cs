@@ -49,7 +49,7 @@ public sealed class App : IExternalApplication
         AddButton<ResizeCommand>(routing, "Resize", "resize", "resize",
             "Resize the selected piping, or the one-size branch through a picked element: pipes, fittings, flanges and valves (or another type of the same family), plus the outlet of the tee or olet it comes off. Keeps the bottom of pipe where it can and reports any change.");
         AddButton<ReplaceConfigurationCommand>(routing, "Replace\nConfig", "replace", "replace",
-            "Swap every branch laid out like a picked one (same system) for a correctly built branch or assembly, reconnected to its header, with optional numbering.");
+            "Swap every branch laid out like the picked ones for a correctly built branch or assembly, reconnected to its header. Review first in a window listing each branch (nearest grid, legs, stretch, pipe length) beside a preview of them all; optional numbering.");
         AddButton<EzIsoCheckCommand>(routing, "EZ-ISO\nCheck", "ez_iso", "ez_iso",
             "Check line numbers ({BC_SYSTEM}-{BC_PACKAGE}-{BC_LINE SEGMENT}) for EZ-ISO's Auto Line Nos: correct lines, identical branches sharing a number and DETAIL values are left alone; empty values, outliers, duplicate and unnumbered lines and touching-but-unconnected taps are listed with a fix.");
 
