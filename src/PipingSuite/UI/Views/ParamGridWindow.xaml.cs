@@ -98,6 +98,8 @@ public partial class ParamGridWindow : Window
 
     private List<GridItem> SelectedItems() => Grid.SelectedCells.Select(c => c.Item).OfType<GridItem>().Distinct().ToList();
 
+    private void OnSourcesOpen(object? sender, EventArgs e) => _vm.LoadSources();
+
     private void OnSet(object sender, RoutedEventArgs e) => _vm.SetCells(Selected(), _vm.SetValue);
     private void OnFill(object sender, RoutedEventArgs e) => _vm.FillDown(Selected());
     private void OnRevert(object sender, RoutedEventArgs e) => _vm.Revert(Selected());
@@ -141,6 +143,7 @@ public partial class ParamGridWindow : Window
         foreach (var c in Grid.Columns) c.SortDirection = null;
         e.Column.SortDirection = dir;
         int set = SetIndex(e.Column), info = Grid.Columns.IndexOf(e.Column);
+        if (info is 4 or 5) _vm.EnsureTopology(); // Run, Line
         Func<GridItem, string> key = set >= 0 ? i => i.Cells[set].Value ?? string.Empty : info switch
         {
             0 => i => i.Id.ToString(),

@@ -16,6 +16,8 @@ namespace PipingSuite.UI.ViewModels;
 public interface IParamGridHost
 {
     GridData Load(bool selectionOnly, bool pipingOnly);
+    /// <summary>Connected run and line of each loaded piping element; slower, so only asked for when needed.</summary>
+    IReadOnlyDictionary<long, (string Run, string Line)> Topology();
     IReadOnlyList<string> SourceParameters();
     IReadOnlyDictionary<long, string?> SourceValues(string source, IReadOnlyCollection<long> ids);
     (int Written, IReadOnlyList<string> Errors) Apply(IReadOnlyList<CellWrite> writes);
@@ -41,14 +43,15 @@ public sealed partial class GridCell(string? original) : ObservableObject
     public string? Suggestion { get; set; }
 }
 
-public sealed class GridItem(GridRow row)
+public sealed partial class GridItem(GridRow row) : ObservableObject
 {
     public long Id => row.Id;
     public string Category => row.Category;
     public string FamilyType => row.FamilyType;
     public string SystemType => row.SystemType;
-    public string Run => row.Run;
-    public string Line => row.Line;
+    /// <summary>Connected run and line, filled in the first time a feature needs them.</summary>
+    [ObservableProperty] private string _run = string.Empty;
+    [ObservableProperty] private string _line = string.Empty;
     public GridCell[] Cells { get; } = row.Values.Select(v => new GridCell(v)).ToArray();
 }
 
@@ -64,12 +67,11 @@ public sealed partial class ParamGridViewModel : ObservableObject
 
     private readonly IParamGridHost _host;
     private List<(GridItem Item, int Col)> _lastFill = [];
+    private bool _topology;
 
     public ParamGridViewModel(IParamGridHost host)
     {
         _host = host;
-        View = CollectionViewSource.GetDefaultView(Items);
-        View.Filter = o => o is GridItem i && Passes(i);
         Reload(confirm: false);
     }
 
@@ -79,12 +81,30 @@ public sealed partial class ParamGridViewModel : ObservableObject
     public Func<bool>? ConfirmDiscard { get; set; }
 
     public IReadOnlyList<string> Columns { get; private set; } = [];
-    public ObservableCollection<GridItem> Items { get; } = [];
-    public ICollectionView View { get; }
+    public ObservableCollection<GridItem> Items { get; private set; } = [];
+    [ObservableProperty] private ICollectionView _view = CollectionViewSource.GetDefaultView(new List<GridItem>());
     public IReadOnlyList<LabeledValue<FillMode>> FillModes { get; } = [new("Copy down", FillMode.CopyDown), new("Fill series", FillMode.Series)];
     public IReadOnlyList<string> SameChoices => [SameLine, SameRun, SameSystemType, .. Columns];
-    public IReadOnlyList<string> Sources => _sources ??= _host.SourceParameters();
+    /// <summary>Parameters to copy from: read the first time the list is opened, not on load.</summary>
+    public IReadOnlyList<string> Sources => _sources ?? [];
     private IReadOnlyList<string>? _sources;
+
+    public void LoadSources()
+    {
+        if (_sources is not null) return;
+        _sources = _host.SourceParameters();
+        OnPropertyChanged(nameof(Sources));
+    }
+
+    /// <summary>Fills in every row's run and line, once.</summary>
+    public void EnsureTopology()
+    {
+        if (_topology) return;
+        _topology = true;
+        var map = _host.Topology();
+        foreach (var i in Items)
+            if (map.TryGetValue(i.Id, out var t)) (i.Run, i.Line) = t;
+    }
 
     [ObservableProperty] private bool _selectionOnly;
     [ObservableProperty] private bool _pipingOnly = true;
@@ -115,8 +135,11 @@ public sealed partial class ParamGridViewModel : ObservableObject
         Columns = data.Columns;
         _sources = null;
         _lastFill = [];
-        Items.Clear();
-        foreach (var r in data.Rows) Items.Add(new GridItem(r));
+        _topology = false;
+        // One new collection and view, not row-by-row adds: each add on a live view re-filters and redraws.
+        Items = new ObservableCollection<GridItem>(data.Rows.Select(r => new GridItem(r)));
+        var view = new ListCollectionView(Items) { Filter = o => o is GridItem i && Passes(i) };
+        View = view;
         OnPropertyChanged(nameof(SameChoices));
         OnPropertyChanged(nameof(Sources));
         ColumnsChanged?.Invoke();
@@ -206,6 +229,7 @@ public sealed partial class ParamGridViewModel : ObservableObject
     /// <summary>Visible rows sharing a seed row's line (branch), connected run, system type or value in the chosen column.</summary>
     public List<GridItem> SameAs(IReadOnlyCollection<GridItem> seeds)
     {
+        if (SameBy is SameLine or SameRun) EnsureTopology();
         int col = Columns.ToList().FindIndex(c => c == SameBy);
         string? Key(GridItem i) => SameBy switch
         {
@@ -226,6 +250,7 @@ public sealed partial class ParamGridViewModel : ObservableObject
     [RelayCommand]
     private void Check()
     {
+        EnsureTopology();
         foreach (var c in Items.SelectMany(i => i.Cells)) (c.Issue, c.Suggestion) = (null, null);
         int issues = 0;
         void Flag(IEnumerable<GridItem> group, int col, string where)
@@ -289,6 +314,7 @@ public sealed partial class ParamGridViewModel : ObservableObject
     /// <summary>The visible rows, with their pending values, under headers the import recognises (ElementId + parameter names).</summary>
     public void Export(string path)
     {
+        EnsureTopology();
         var rows = new List<IReadOnlyList<string>> { InfoHeaders.Concat(Columns).ToList() };
         rows.AddRange(Visible.Select(i => (IReadOnlyList<string>)new[] { i.Id.ToString(), i.Category, i.FamilyType, i.SystemType, i.Run, i.Line }
             .Concat(i.Cells.Select(c => c.Value ?? string.Empty)).ToList()));
