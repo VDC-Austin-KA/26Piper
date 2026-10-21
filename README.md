@@ -127,6 +127,12 @@ Color schemes save to and load from `.json` files. The window stays open while y
 - **Legend:** swatches in the same colors, with the package names inside, stacked to the left of the boxes and top-aligned with them.
 - Everything is one undo. Revit then opens the new view and reports the box count.
 
+**Change System** (Routing panel) moves piping to another piping system type, e.g. Condensate Water Supply to Condensate Water Return.
+1. **Scope:** the selected piping, or pick it when nothing is selected. Tick **Include connected piping on the same system** to move the whole run: everything joined to the selection on one of its current system types.
+2. **System type:** pick from the project's piping system types, listed with their classification. A type whose name differs only in its last word (Supply → Return) is preselected. The dialog shows how many elements will change and which systems they're on now.
+3. **Change:** pipes take the new system type; fittings and valves follow the pipes they join. Revit warnings are dismissed. Errors, such as an equipment connector whose classification doesn't match, take Revit's default fix and are reported.
+4. **Report:** how many pipes moved, any fitting or valve that didn't follow (select the pipes on both sides of it), and where the change stops against piping still on another system. One undo reverts it.
+
 **Resize** (Routing panel) changes a branch of one-size piping to another size.
 1. **What it resizes:** the selected piping, plus the fittings and accessories sitting between selected pieces. With nothing selected, pick one element: the branch is everything connected to it in the same size, up to (not including) size changes and the tees, crosses and olets it comes off. The branch is selected in Revit so you can see it before choosing.
 2. **Size:** pick from the sizes the pipe's segment offers; the next size up is preselected.
